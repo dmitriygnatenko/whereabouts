@@ -29,11 +29,11 @@ const (
 // parseDataURL разбирает "data:<mime>;base64,<данные>" на MIME-тип и сырые байты.
 func parseDataURL(s string) (mimeType string, data []byte, err error) {
 	if !strings.HasPrefix(s, "data:") {
-		return "", nil, fmt.Errorf("не похоже на data URL")
+		return "", nil, fmt.Errorf("does not look like a data URL")
 	}
 	comma := strings.IndexByte(s, ',')
 	if comma == -1 {
-		return "", nil, fmt.Errorf("некорректный data URL: нет запятой-разделителя")
+		return "", nil, fmt.Errorf("invalid data URL: missing comma separator")
 	}
 	header := s[len("data:"):comma]
 	body := s[comma+1:]
@@ -47,30 +47,31 @@ func parseDataURL(s string) (mimeType string, data []byte, err error) {
 	if !isBase64 {
 		decodedStr, uerr := url.QueryUnescape(body)
 		if uerr != nil {
-			return "", nil, fmt.Errorf("некорректная кодировка data URL: %w", uerr)
+			return "", nil, fmt.Errorf("invalid data URL encoding: %w", uerr)
 		}
 		return mimeType, []byte(decodedStr), nil
 	}
 
 	raw, derr := base64.StdEncoding.DecodeString(body)
 	if derr != nil {
-		return "", nil, fmt.Errorf("некорректный base64 в data URL: %w", derr)
+		return "", nil, fmt.Errorf("invalid base64 in data URL: %w", derr)
 	}
 	return mimeType, raw, nil
 }
 
-// processImageDataURL приводит фотографию к разумному размеру: если она уже
-// компактная — возвращает как есть, иначе уменьшает по большей стороне
+// decodeAndCompressImage приводит фотографию к разумному размеру: если она
+// уже компактная — возвращает как есть, иначе уменьшает по большей стороне
 // до maxImageDimension и подбирает качество JPEG так, чтобы уложиться
-// примерно в maxImageBytes.
-func processImageDataURL(dataURL string) (string, error) {
+// примерно в maxImageBytes. Возвращает готовые к записи на диск байты файла
+// и расширение, с которым его следует сохранить.
+func decodeAndCompressImage(dataURL string) (data []byte, ext string, err error) {
 	mimeType, raw, err := parseDataURL(dataURL)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 
 	if len(raw) <= skipIfUnderBytes && mimeType == "image/jpeg" {
-		return dataURL, nil
+		return raw, ".jpg", nil
 	}
 
 	img, _, decErr := image.Decode(bytes.NewReader(raw))
@@ -78,17 +79,34 @@ func processImageDataURL(dataURL string) (string, error) {
 		// Формат, который стандартная библиотека не умеет декодировать
 		// (например, HEIC/WebP) — лучше сохранить фото как есть, чем
 		// потерять его из-за неудавшегося сжатия.
-		return dataURL, nil
+		return raw, extForMime(mimeType), nil
 	}
 
 	img = maybeResize(img, maxImageDimension)
 
 	encoded, encErr := encodeJPEGWithBudget(img, maxImageBytes)
 	if encErr != nil {
-		return "", fmt.Errorf("не удалось сжать изображение: %w", encErr)
+		return nil, "", fmt.Errorf("failed to compress image: %w", encErr)
 	}
 
-	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(encoded), nil
+	return encoded, ".jpg", nil
+}
+
+// extForMime подбирает расширение файла для форматов, которые мы не умеем
+// перекодировать в JPEG (см. decodeAndCompressImage выше).
+func extForMime(mimeType string) string {
+	switch mimeType {
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	case "image/heic", "image/heif":
+		return ".heic"
+	default:
+		return ".jpg"
+	}
 }
 
 // encodeJPEGWithBudget кодирует изображение в JPEG, постепенно снижая

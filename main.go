@@ -7,10 +7,23 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 //go:embed web/*
 var webFiles embed.FS
+
+// loadEnvFile populates process env vars from a local .env file, if present —
+// convenient for local development so you don't have to export DB_HOST etc.
+// by hand. Real environment variables always win: godotenv.Load never
+// overwrites a variable that's already set, so this is a no-op in
+// production/Docker where config comes from the real environment.
+func loadEnvFile() {
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		log.Printf("warning: failed to read .env: %v", err)
+	}
+}
 
 func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
@@ -62,6 +75,7 @@ func withLogging(next http.Handler) http.Handler {
 }
 
 func main() {
+	loadEnvFile()
 	cfg := loadDBConfig()
 
 	log.Printf("проверяю базу данных %q на %s:%s...", cfg.Name, cfg.Host, cfg.Port)
@@ -78,6 +92,12 @@ func main() {
 
 	if err := migrate(db); err != nil {
 		log.Fatalf("не удалось выполнить миграции: %v", err)
+	}
+	if err := ensureFilesDir(); err != nil {
+		log.Fatalf("не удалось создать каталог для файлов фотографий: %v", err)
+	}
+	if err := migrateBase64ImagesToFiles(db); err != nil {
+		log.Printf("предупреждение: не удалось перенести старые фото в файлы: %v", err)
 	}
 	if err := seedIfEmpty(db); err != nil {
 		log.Fatalf("не удалось наполнить базу демо-данными: %v", err)
