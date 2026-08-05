@@ -24,20 +24,21 @@ const userContextKey ctxKey = "currentUser"
 
 // PublicUser — то, что отдаём наружу в JSON. Хеш пароля сюда никогда не попадает.
 type PublicUser struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Language string `json:"language"`
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Username            string `json:"username"`
+	Language            string `json:"language"`
+	LocationFilterDepth int    `json:"locationFilterDepth"`
 }
 
 type registerInput struct {
 	Name     string `json:"name"`
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
 type loginInput struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -45,8 +46,24 @@ type updateLanguageInput struct {
 	Language string `json:"language"`
 }
 
+type updateLocationFilterDepthInput struct {
+	LocationFilterDepth int `json:"locationFilterDepth"`
+}
+
+type updateUsernameInput struct {
+	Username        string `json:"username"`
+	CurrentPassword string `json:"currentPassword"`
+}
+
+type changePasswordInput struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
 // supportedLanguages — языки интерфейса, которые понимает фронтенд.
-var supportedLanguages = map[string]bool{"en": true, "ru": true}
+// Держите в синхроне с SUPPORTED_LOCALES в web/i18n.js ("en" там не нужен —
+// это язык по умолчанию, на который фронтенд откатывается сам).
+var supportedLanguages = map[string]bool{"en": true, "ru": true, "de": true, "es": true, "fr": true}
 
 // userFromContext достаёт пользователя, положенного в контекст миддлварью requireAuth.
 func userFromContext(r *http.Request) *PublicUser {
@@ -62,8 +79,10 @@ func newToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func normalizeEmail(e string) string {
-	return strings.ToLower(strings.TrimSpace(e))
+const minUsernameLength = 3
+
+func normalizeUsername(u string) string {
+	return strings.ToLower(strings.TrimSpace(u))
 }
 
 // ---------- пароли ----------
@@ -131,25 +150,25 @@ func (s *server) destroySession(w http.ResponseWriter, r *http.Request) {
 func (s *server) userFromSession(r *http.Request) (*PublicUser, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		return nil, errors.New("нет сессии")
+		return nil, errors.New("no session")
 	}
 
 	var user PublicUser
 	var expiresAt string
 	err = s.db.QueryRow(
-		`SELECT u.id, u.name, u.email, u.language, s.expires_at
+		`SELECT u.id, u.name, u.username, u.language, u.location_filter_depth, s.expires_at
 		 FROM sessions s
 		 JOIN users u ON u.id = s.user_id
 		 WHERE s.token = ?`,
 		cookie.Value,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Language, &expiresAt)
+	).Scan(&user.ID, &user.Name, &user.Username, &user.Language, &user.LocationFilterDepth, &expiresAt)
 	if err != nil {
-		return nil, errors.New("сессия не найдена")
+		return nil, errors.New("session not found")
 	}
 
 	if expiresAt < time.Now().UTC().Format(time.RFC3339) {
 		_, _ = s.db.Exec(`DELETE FROM sessions WHERE token = ?`, cookie.Value)
-		return nil, errors.New("сессия истекла")
+		return nil, errors.New("session expired")
 	}
 
 	return &user, nil
@@ -160,7 +179,7 @@ func (s *server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := s.userFromSession(r)
 		if err != nil {
-			writeError(w, http.StatusUnauthorized, "необходима авторизация")
+			writeError(w, http.StatusUnauthorized, "Authentication required")
 			return
 		}
 		ctx := context.WithValue(r.Context(), userContextKey, user)
@@ -173,26 +192,30 @@ func (s *server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var in registerInput
 	if err := decodeJSON(r, &in); err != nil {
-		writeError(w, http.StatusBadRequest, "некорректное тело запроса")
+		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		name = "Без имени"
+		name = "Unnamed"
 	}
-	email := normalizeEmail(in.Email)
-	if email == "" {
-		writeError(w, http.StatusUnprocessableEntity, "укажите email")
+	username := normalizeUsername(in.Username)
+	if username == "" {
+		writeError(w, http.StatusUnprocessableEntity, "Please enter a username")
+		return
+	}
+	if len(username) < minUsernameLength {
+		writeError(w, http.StatusUnprocessableEntity, "Username must be at least 3 characters")
 		return
 	}
 	if len(in.Password) < 4 {
-		writeError(w, http.StatusUnprocessableEntity, "пароль должен быть не короче 4 символов")
+		writeError(w, http.StatusUnprocessableEntity, "Password must be at least 4 characters")
 		return
 	}
 
 	hash, err := hashPassword(in.Password)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "не удалось обработать пароль")
+		writeError(w, http.StatusInternalServerError, "Failed to process password")
 		return
 	}
 
@@ -200,46 +223,46 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	// language не передаётся при регистрации — используется дефолт колонки ('en').
 	_, err = s.db.Exec(
-		`INSERT INTO users (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
-		id, name, email, hash, now,
+		`INSERT INTO users (id, name, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
+		id, name, username, hash, now,
 	)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
-			writeError(w, http.StatusConflict, "пользователь с таким email уже зарегистрирован")
+			writeError(w, http.StatusConflict, "A user with this username is already registered")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "не удалось создать пользователя")
+		writeError(w, http.StatusInternalServerError, "Failed to create user")
 		return
 	}
 
 	if err := s.createSession(w, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "пользователь создан, но не удалось начать сессию")
+		writeError(w, http.StatusInternalServerError, "User created, but failed to start a session")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PublicUser{ID: id, Name: name, Email: email, Language: "en"})
+	writeJSON(w, http.StatusCreated, PublicUser{ID: id, Name: name, Username: username, Language: "en"})
 }
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var in loginInput
 	if err := decodeJSON(r, &in); err != nil {
-		writeError(w, http.StatusBadRequest, "некорректное тело запроса")
+		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	email := normalizeEmail(in.Email)
+	username := normalizeUsername(in.Username)
 
 	var user PublicUser
 	var hash string
 	err := s.db.QueryRow(
-		`SELECT id, name, email, language, password_hash FROM users WHERE email = ?`, email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Language, &hash)
+		`SELECT id, name, username, language, location_filter_depth, password_hash FROM users WHERE username = ?`, username,
+	).Scan(&user.ID, &user.Name, &user.Username, &user.Language, &user.LocationFilterDepth, &hash)
 	if err != nil || !checkPassword(hash, in.Password) {
-		writeError(w, http.StatusUnauthorized, "неверный email или пароль")
+		writeError(w, http.StatusUnauthorized, "Incorrect username or password")
 		return
 	}
 
 	if err := s.createSession(w, user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "не удалось начать сессию")
+		writeError(w, http.StatusInternalServerError, "Failed to start a session")
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
@@ -253,7 +276,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	user, err := s.userFromSession(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "не авторизован")
+		writeError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
@@ -264,25 +287,162 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleUpdateLanguage(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
 	if user == nil {
-		writeError(w, http.StatusUnauthorized, "не авторизован")
+		writeError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
 	var in updateLanguageInput
 	if err := decodeJSON(r, &in); err != nil {
-		writeError(w, http.StatusBadRequest, "некорректное тело запроса")
+		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 	lang := strings.ToLower(strings.TrimSpace(in.Language))
 	if !supportedLanguages[lang] {
-		writeError(w, http.StatusUnprocessableEntity, "недопустимый язык")
+		writeError(w, http.StatusUnprocessableEntity, "Unsupported language")
 		return
 	}
 
 	if _, err := s.db.Exec(`UPDATE users SET language = ? WHERE id = ?`, lang, user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "не удалось сохранить язык")
+		writeError(w, http.StatusInternalServerError, "Failed to save language preference")
 		return
 	}
 	user.Language = lang
 	writeJSON(w, http.StatusOK, user)
+}
+
+// handleUpdateLocationFilterDepth сохраняет глубину вложенности мест, которую
+// показывать в чипах-фильтрах на вкладке "Вещи". 0 означает "без ограничения".
+func (s *server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	var in updateLocationFilterDepthInput
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if in.LocationFilterDepth != 0 && in.LocationFilterDepth < 1 {
+		writeError(w, http.StatusUnprocessableEntity, "Location filter depth must be 0 (show all) or at least 1")
+		return
+	}
+
+	if _, err := s.db.Exec(`UPDATE users SET location_filter_depth = ? WHERE id = ?`, in.LocationFilterDepth, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save location filter depth")
+		return
+	}
+	user.LocationFilterDepth = in.LocationFilterDepth
+	writeJSON(w, http.StatusOK, user)
+}
+
+// checkCurrentPassword re-fetches the user's password hash and verifies it
+// against the given plaintext — used before letting the profile page change
+// the username or password, since the session cookie alone shouldn't be enough.
+func (s *server) checkCurrentPassword(userID, password string) (bool, error) {
+	var hash string
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&hash); err != nil {
+		return false, err
+	}
+	return checkPassword(hash, password), nil
+}
+
+// handleUpdateUsername lets a signed-in user change their login username,
+// after confirming their current password.
+func (s *server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	var in updateUsernameInput
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	username := normalizeUsername(in.Username)
+	if username == "" {
+		writeError(w, http.StatusUnprocessableEntity, "Please enter a username")
+		return
+	}
+	if len(username) < minUsernameLength {
+		writeError(w, http.StatusUnprocessableEntity, "Username must be at least 3 characters")
+		return
+	}
+
+	ok, err := s.checkCurrentPassword(user.ID, in.CurrentPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to verify current password")
+		return
+	}
+	if !ok {
+		// 403, not 401: the session itself is still valid — only the
+		// re-entered password was wrong. A 401 here would trip the
+		// frontend's global "session expired" handler and log the user out.
+		writeError(w, http.StatusForbidden, "Incorrect current password")
+		return
+	}
+
+	if username == user.Username {
+		writeJSON(w, http.StatusOK, user)
+		return
+	}
+
+	if _, err := s.db.Exec(`UPDATE users SET username = ? WHERE id = ?`, username, user.ID); err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			writeError(w, http.StatusConflict, "A user with this username is already registered")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to update username")
+		return
+	}
+	user.Username = username
+	writeJSON(w, http.StatusOK, user)
+}
+
+// handleChangePassword lets a signed-in user change their password, after
+// confirming their current one.
+func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	var in changePasswordInput
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(in.NewPassword) < 4 {
+		writeError(w, http.StatusUnprocessableEntity, "Password must be at least 4 characters")
+		return
+	}
+
+	ok, err := s.checkCurrentPassword(user.ID, in.CurrentPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to verify current password")
+		return
+	}
+	if !ok {
+		// 403, not 401: the session itself is still valid — only the
+		// re-entered password was wrong. A 401 here would trip the
+		// frontend's global "session expired" handler and log the user out.
+		writeError(w, http.StatusForbidden, "Incorrect current password")
+		return
+	}
+
+	newHash, err := hashPassword(in.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to process password")
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, newHash, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update password")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

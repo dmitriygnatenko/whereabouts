@@ -1,0 +1,19 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: wherewhat-mariadb
+    restart: unless-stopped
+    environment:
+      # Root stays passwordless for convenience (admin access from a GUI client).
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+      # App user — matches DB_USER/DB_PASSWORD/DB_NAME in .env.
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+volumes:
+  mariadb_data:

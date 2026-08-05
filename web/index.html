@@ -10,577 +10,8 @@
 <title>Whereabouts — item tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
-<style>
-  :root{
-    --ink:#20241F;
-    --paper:#EEECDF;
-    --card:#FBFAF4;
-    --amber:#D98E2B;
-    --amber-deep:#B8721A;
-    --teal:#3D6B63;
-    --teal-deep:#2C4E48;
-    --header-bg:#4F8177;
-    --line:#C9C2A9;
-    --line-soft:#DDD7C2;
-    --danger:#B5453A;
-    --shadow: 0 2px 0 rgba(32,36,31,0.06), 0 8px 20px -12px rgba(32,36,31,0.35);
-    --radius: 6px;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0; overflow-x:hidden; width:100%;}
-  body{
-    background:var(--paper);
-    background-image:
-      radial-gradient(circle at 1px 1px, rgba(32,36,31,0.06) 1px, transparent 0);
-    background-size: 18px 18px;
-    color:var(--ink);
-    font-family:'Inter',sans-serif;
-    -webkit-font-smoothing:antialiased;
-    min-height:100vh;
-    min-height:100dvh;
-  }
-  .mono{font-family:'Space Mono',monospace;}
-  .eyebrow{
-    font-family:'Barlow Condensed',sans-serif;
-    font-weight:700;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    font-size:12px;
-    color:var(--teal-deep);
-  }
-  #app{
-    max-width:480px;
-    margin:0 auto;
-    min-height:100vh;
-    min-height:100dvh;
-    width:100%;
-    background:transparent;
-    display:flex;
-    flex-direction:column;
-    position:relative;
-    padding-bottom: calc(78px + env(safe-area-inset-bottom));
-    overflow-x:hidden;
-  }
-  body.modal-open{overflow:hidden;}
-  body.modal-open #app{overflow:hidden; height:100dvh;}
-
-  /* ---------- Top bar ---------- */
-  .topbar{
-    position:sticky; top:0; z-index:20;
-    background:var(--header-bg);
-    color:var(--paper);
-    padding: calc(16px + env(safe-area-inset-top)) 16px 14px;
-    border-bottom: 3px solid var(--amber);
-  }
-  .topbar-row{display:flex; align-items:baseline; justify-content:space-between; gap:8px;}
-  .brand{
-    font-family:'Space Mono',monospace;
-    font-weight:700;
-    font-size:20px;
-    letter-spacing:.02em;
-  }
-  .brand span{color:var(--amber);}
-  .badge-stub{
-    font-family:'Barlow Condensed',sans-serif;
-    font-size:11px;
-    letter-spacing:.08em;
-    text-transform:uppercase;
-    color:var(--paper);
-    opacity:.55;
-    border:1px dashed rgba(238,236,223,0.4);
-    padding:2px 6px;
-    border-radius:3px;
-    white-space:nowrap;
-  }
-  .subtitle{
-    margin-top:2px;
-    font-size:12.5px;
-    color:rgba(238,236,223,0.65);
-  }
-
-  .search-wrap{
-    margin-top:14px;
-    position:relative;
-  }
-  .search-wrap svg{
-    position:absolute; left:12px; top:50%; transform:translateY(-50%);
-    width:16px; height:16px; stroke:var(--ink); opacity:.55;
-  }
-  .search-input{
-    width:100%;
-    font-family:'Space Mono',monospace;
-    font-size:16px;
-    letter-spacing:.02em;
-    text-transform:uppercase;
-    background:var(--card);
-    border:2px dashed var(--line);
-    border-radius:4px;
-    padding:11px 12px 11px 36px;
-    color:var(--ink);
-    outline:none;
-  }
-  .search-input::placeholder{color:#8b8571; text-transform:uppercase;}
-  .search-input:focus{border-color:var(--amber); border-style:solid;}
-
-  /* ---------- Location chip rail ---------- */
-  .chip-rail{
-    display:flex; gap:8px; overflow-x:auto;
-    padding: 14px 16px 4px;
-    scrollbar-width:none;
-  }
-  .chip-rail::-webkit-scrollbar{display:none;}
-  .chip{
-    flex:0 0 auto;
-    font-family:'Barlow Condensed',sans-serif;
-    font-weight:700;
-    letter-spacing:.05em;
-    text-transform:uppercase;
-    font-size:13px;
-    padding:7px 13px;
-    border-radius:999px;
-    border:1.5px solid var(--line);
-    background:var(--card);
-    color:var(--ink);
-    cursor:pointer;
-    display:flex; align-items:center; gap:6px;
-    transition:transform .12s ease;
-  }
-  .chip:active{transform:scale(.96);}
-  .chip.active{
-    background:var(--teal);
-    border-color:var(--teal);
-    color:#fff;
-  }
-  .chip .count{opacity:.6; font-size:11px;}
-
-  /* ---------- Main content ---------- */
-  main{flex:1; padding:8px 16px 24px;}
-  .section-head{
-    display:flex; align-items:center; justify-content:space-between;
-    margin: 14px 2px 10px;
-  }
-  .section-head .eyebrow{margin:0;}
-
-  /* ---------- Item ticket card ---------- */
-  .item-list{display:flex; flex-direction:column; gap:12px;}
-  .item-card{
-    position:relative;
-    display:flex;
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:var(--radius);
-    box-shadow:var(--shadow);
-    overflow:hidden;
-    cursor:pointer;
-  }
-  .item-stub{
-    flex:0 0 62px;
-    position:relative;
-    display:flex; align-items:center; justify-content:center;
-    border-right:2px dashed var(--line);
-    background:repeating-linear-gradient(135deg, rgba(32,36,31,0.02) 0 6px, transparent 6px 12px);
-  }
-  .item-stub::before{
-    content:"";
-    position:absolute; top:-8px; left:50%; transform:translateX(-50%);
-    width:16px; height:16px; border-radius:50%;
-    background:var(--paper);
-    border:1px solid var(--line);
-    z-index:2;
-  }
-  .item-stub.has-image{padding:0; background:#000;}
-  .item-stub.has-image img{
-    width:100%; height:100%; object-fit:cover; display:block; cursor:zoom-in;
-  }
-  .image-count-badge{
-    position:absolute; bottom:4px; right:4px;
-    background:rgba(32,36,31,0.75); color:#fff;
-    font-family:'Space Mono',monospace; font-size:9.5px; font-weight:700;
-    padding:1px 5px; border-radius:8px; z-index:2;
-  }
-  .avatar{
-    width:34px; height:34px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-family:'Space Mono',monospace; font-weight:700; font-size:14px;
-    color:#fff;
-    border:2px solid rgba(255,255,255,0.5);
-  }
-  .item-body{flex:1; padding:12px 12px 12px 14px; min-width:0;}
-  .item-name{
-    font-family:'Space Mono',monospace;
-    font-weight:700;
-    font-size:14.5px;
-    text-transform:uppercase;
-    letter-spacing:.01em;
-    line-height:1.25;
-  }
-  .item-loc{
-    margin-top:5px;
-    display:flex; align-items:center; gap:5px;
-    font-size:12.5px; color:var(--teal-deep); font-weight:600;
-  }
-  .item-loc svg{width:12px; height:12px; stroke:var(--teal-deep); flex:0 0 auto;}
-  .item-note{
-    margin-top:5px; font-size:12.5px; color:#6b6553;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  .item-meta{
-    margin-top:8px; font-size:11px; color:#9a9481;
-    font-family:'Barlow Condensed',sans-serif; letter-spacing:.04em; text-transform:uppercase;
-  }
-  .item-actions{
-    flex:0 0 auto; display:flex; flex-direction:column; border-left:1px solid var(--line-soft);
-  }
-  .item-actions button{
-    flex:1; width:44px; min-height:44px;
-    background:transparent; border:0; border-bottom:1px solid var(--line-soft);
-    display:flex; align-items:center; justify-content:center;
-    color:var(--ink); opacity:.55; cursor:pointer;
-  }
-  .item-actions button:last-child{border-bottom:0;}
-  .item-actions button:active{opacity:1; background:rgba(0,0,0,0.04);}
-  .item-actions svg{width:15px; height:15px; stroke:currentColor;}
-  .item-actions .del:active{color:var(--danger);}
-
-  /* ---------- Empty state ---------- */
-  .empty{
-    text-align:center; padding:48px 20px 20px; color:#7d775f;
-  }
-  .empty svg{width:44px; height:44px; stroke:var(--line); margin-bottom:10px;}
-  .empty h3{font-family:'Space Mono',monospace; font-size:14px; margin:0 0 6px; text-transform:uppercase; color:var(--ink);}
-  .empty p{font-size:13px; margin:0 0 16px; line-height:1.5;}
-  .empty button{
-    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
-    background:var(--amber); color:#fff; border:0; padding:10px 18px; border-radius:4px; font-size:13.5px; cursor:pointer;
-  }
-
-  /* ---------- Skeleton ---------- */
-  .skeleton{ display:flex; flex-direction:column; gap:12px; }
-  .sk-card{height:78px; border-radius:var(--radius); background:linear-gradient(90deg, #E6E2D2 25%, #EFEBDD 37%, #E6E2D2 63%); background-size:400% 100%; animation:shimmer 1.4s ease infinite;}
-  @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
-
-  /* ---------- Locations tab (tree) ---------- */
-  .loc-list{display:flex; flex-direction:column; gap:8px;}
-  .loc-row{
-    display:flex; align-items:center; gap:10px;
-    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
-    padding:10px 10px; box-shadow:var(--shadow);
-    position:relative;
-  }
-  .loc-row.is-nested{background:#F5F3E8;}
-  .loc-toggle{
-    flex:0 0 auto; width:32px; height:32px; border:0; background:transparent; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; color:var(--teal-deep); opacity:.8;
-    padding:0;
-  }
-  .loc-toggle svg{width:14px; height:14px; stroke:currentColor; transition:transform .15s ease;}
-  .loc-toggle.collapsed svg{transform:rotate(-90deg);}
-  .loc-toggle-spacer{flex:0 0 32px;}
-  .loc-dot{width:14px; height:14px; border-radius:50%; flex:0 0 auto; border:2px solid rgba(255,255,255,.6); box-shadow:0 0 0 1px var(--line);}
-  .loc-row .loc-name{font-family:'Space Mono',monospace; font-weight:700; font-size:13.5px; text-transform:uppercase; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .loc-row .loc-count{font-size:12px; color:#8b8571; font-family:'Barlow Condensed',sans-serif; letter-spacing:.04em; flex:0 0 auto;}
-  .loc-row-actions{display:flex; align-items:center; gap:0; flex:0 0 auto;}
-  .loc-row button.icon-btn{background:transparent; border:0; opacity:.5; cursor:pointer; padding:10px 6px; min-width:36px; min-height:36px;}
-  .loc-row button.icon-btn svg{width:16px; height:16px; stroke:var(--teal-deep);}
-  .loc-row button.icon-btn.del svg{stroke:var(--danger);}
-  .add-loc-form{
-    display:flex; gap:8px; margin-top:4px;
-  }
-  .add-loc-form input{
-    flex:1; font-family:'Inter'; font-size:16px; padding:10px 12px;
-    border:1.5px solid var(--line); border-radius:4px; background:var(--card); outline:none;
-    min-width:0;
-  }
-  .add-loc-form input:focus{border-color:var(--teal);}
-  .add-loc-form button{
-    background:var(--teal); color:#fff; border:0; border-radius:4px; padding:0 16px;
-    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;
-  }
-  .add-loc-form button:disabled{opacity:.5; cursor:not-allowed;}
-  .parent-hint{
-    display:flex; align-items:center; gap:6px; margin-top:8px;
-    font-size:12px; color:var(--teal-deep); background:#E7E9DA; border-radius:4px; padding:6px 9px;
-  }
-  .parent-hint button{background:transparent; border:0; padding:0; margin-left:auto; color:var(--danger); font-size:12px; cursor:pointer; font-weight:700; font-family:'Barlow Condensed',sans-serif; text-transform:uppercase; letter-spacing:.04em;}
-  .chip-indent{opacity:.45; margin-right:1px;}
-
-  /* ---------- FAB ---------- */
-  .fab{
-    position:fixed; z-index:30;
-    right:calc(50% - 240px + 20px);
-    bottom:calc(78px + env(safe-area-inset-bottom) + 16px);
-    width:56px; height:56px; border-radius:50%;
-    background:var(--amber); color:#fff;
-    border:2px dashed rgba(255,255,255,0.55);
-    box-shadow:0 10px 20px -6px rgba(184,114,26,0.55);
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer; transform:rotate(-4deg);
-    transition:transform .15s ease;
-  }
-  .fab:active{transform:rotate(-4deg) scale(.92);}
-  .fab svg{width:24px; height:24px; stroke:#fff; stroke-width:2.4;}
-  @media (max-width:520px){
-    .fab{ right:20px; }
-  }
-
-  /* ---------- Bottom nav ---------- */
-  .bottom-nav{
-    position:fixed; left:50%; transform:translateX(-50%);
-    bottom:0; width:100%; max-width:480px;
-    background:var(--header-bg); color:var(--paper);
-    display:flex;
-    padding-bottom: env(safe-area-inset-bottom);
-    border-top:3px solid var(--amber);
-    z-index:25;
-  }
-  .nav-btn{
-    flex:1; background:transparent; border:0; color:rgba(238,236,223,0.55);
-    padding:11px 4px 9px; display:flex; flex-direction:column; align-items:center; gap:3px;
-    cursor:pointer; font-family:'Barlow Condensed',sans-serif; font-size:11.5px; letter-spacing:.07em; text-transform:uppercase; font-weight:700;
-  }
-  .nav-btn svg{width:19px; height:19px; stroke:currentColor;}
-  .nav-btn.active{color:#fff;}
-  .nav-btn.active svg{stroke:var(--amber);}
-
-  /* ---------- Modal / bottom sheet ---------- */
-  .overlay{
-    position:fixed; inset:0; background:rgba(32,36,31,0.55);
-    display:flex; align-items:flex-end; justify-content:center;
-    z-index:50;
-  }
-  .sheet{
-    width:100%; max-width:480px;
-    background:var(--paper);
-    border-radius:16px 16px 0 0;
-    padding:14px 18px calc(20px + env(safe-area-inset-bottom));
-    max-height:88vh; overflow-y:auto;
-    border-top:3px solid var(--amber);
-  }
-  .sheet-handle{width:38px; height:4px; background:var(--line); border-radius:2px; margin:0 auto 14px;}
-  .sheet-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
-  .sheet-head h2{
-    font-family:'Space Mono',monospace; font-size:16px; text-transform:uppercase; margin:0;
-  }
-  .sheet-head button{background:transparent; border:0; padding:4px; opacity:.6; cursor:pointer;}
-  .sheet-head button svg{width:20px; height:20px; stroke:var(--ink);}
-
-  .field{margin-bottom:14px;}
-  .field label{
-    display:block; margin-bottom:6px;
-    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
-    font-size:12px; color:var(--teal-deep);
-  }
-  .field input, .field select, .field textarea{
-    width:100%; font-family:'Inter'; font-size:16px;
-    padding:11px 12px; border:1.5px solid var(--line); border-radius:5px;
-    background:var(--card); color:var(--ink); outline:none; resize:vertical;
-  }
-  .field input:focus, .field select:focus, .field textarea:focus{border-color:var(--amber);}
-  .field-error{color:var(--danger); font-size:12px; margin-top:5px;}
-  .field-hint{color:#9a9481; font-size:11.5px; margin-top:5px;}
-
-  .image-grid{display:flex; flex-wrap:wrap; gap:8px; margin-top:2px;}
-  .image-thumb{
-    position:relative; width:68px; height:68px; border-radius:6px; overflow:hidden;
-    border:1px solid var(--line); flex:0 0 auto;
-  }
-  .image-thumb img{width:100%; height:100%; object-fit:cover; cursor:zoom-in;}
-  .image-thumb .remove-img{
-    position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%;
-    background:rgba(32,36,31,0.75); display:flex; align-items:center; justify-content:center;
-    cursor:pointer; border:0; padding:0;
-  }
-  .image-thumb .remove-img svg{width:10px; height:10px; stroke:#fff; stroke-width:3;}
-  .image-add-btn{
-    width:68px; height:68px; border-radius:6px; flex:0 0 auto;
-    border:2px dashed var(--line); display:flex; align-items:center; justify-content:center;
-    cursor:pointer; background:var(--card); color:var(--teal-deep);
-  }
-  .image-add-btn.uploading{opacity:.5; pointer-events:none;}
-  .image-add-btn svg{width:20px; height:20px; stroke:currentColor;}
-
-  .lightbox-overlay{
-    position:fixed; inset:0; background:rgba(15,16,13,0.92); z-index:80;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .lightbox-overlay img{max-width:90%; max-height:76vh; border-radius:6px; box-shadow:0 20px 50px rgba(0,0,0,0.5);}
-  .lightbox-close{
-    position:absolute; top:calc(16px + env(safe-area-inset-top)); right:16px;
-    width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.12); border:0;
-    display:flex; align-items:center; justify-content:center; cursor:pointer;
-  }
-  .lightbox-close svg{width:18px; height:18px; stroke:#fff;}
-  .lightbox-nav{
-    position:absolute; top:50%; transform:translateY(-50%);
-    width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.12); border:0;
-    display:flex; align-items:center; justify-content:center; cursor:pointer;
-  }
-  .lightbox-nav svg{width:18px; height:18px; stroke:#fff;}
-  .lightbox-prev{left:12px;}
-  .lightbox-next{right:12px;}
-  .lightbox-counter{
-    position:absolute; bottom:calc(20px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
-    color:rgba(255,255,255,0.7); font-family:'Space Mono',monospace; font-size:12px;
-  }
-  .swatches{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;}
-  .swatch{width:26px; height:26px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
-  .swatch.active{border-color:var(--ink);}
-
-  .sheet-actions{display:flex; gap:10px; margin-top:6px;}
-  .btn{
-    flex:1; padding:13px; border-radius:5px; border:0; cursor:pointer;
-    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.05em; text-transform:uppercase; font-size:14.5px;
-  }
-  .btn-primary{background:var(--amber); color:#fff;}
-  .btn-ghost{background:transparent; color:var(--ink); border:1.5px solid var(--line);}
-  .btn-danger{background:var(--danger); color:#fff;}
-  .btn:disabled{opacity:.5; cursor:not-allowed;}
-
-  /* ---------- Confirm dialog ---------- */
-  .confirm-box{
-    width:100%; max-width:380px; background:var(--card);
-    border-radius:10px; padding:20px; margin:0 16px 0;
-    border-top:3px solid var(--danger);
-  }
-  .confirm-box h3{font-family:'Space Mono',monospace; font-size:15px; margin:0 0 8px; text-transform:uppercase;}
-  .confirm-box p{font-size:13.5px; color:#6b6553; margin:0 0 16px; line-height:1.5;}
-  .confirm-actions{display:flex; gap:10px;}
-
-  /* ---------- Toast ---------- */
-  .toast{
-    position:fixed; left:50%; transform:translateX(-50%);
-    bottom:calc(90px + env(safe-area-inset-bottom));
-    background:var(--ink); color:var(--paper);
-    padding:10px 18px; border-radius:999px; font-size:13px;
-    display:flex; align-items:center; gap:8px;
-    box-shadow:0 8px 20px -6px rgba(0,0,0,0.4);
-    z-index:60; max-width:90%;
-    border:1px solid rgba(238,236,223,0.15);
-  }
-  .toast svg{width:14px; height:14px; stroke:var(--amber); flex:0 0 auto;}
-  .toast-enter-active,.toast-leave-active{transition:opacity .2s, transform .2s;}
-  .toast-enter-from,.toast-leave-to{opacity:0; transform:translate(-50%,8px);}
-  .sheet-enter-active,.sheet-leave-active{transition:opacity .2s;}
-  .sheet-enter-active .sheet, .sheet-leave-active .sheet{transition:transform .22s ease;}
-  .sheet-enter-from, .sheet-leave-to{opacity:0;}
-  .sheet-enter-from .sheet, .sheet-leave-to .sheet{transform:translateY(24px);}
-
-  .footnote{
-    text-align:center; font-size:11px; color:#9a9481; padding:10px 20px 4px;
-    font-family:'Barlow Condensed',sans-serif; letter-spacing:.04em;
-  }
-
-  /* ---------- Auth screen ---------- */
-  .auth-screen{
-    min-height:100vh; min-height:100dvh;
-    display:flex; align-items:center; justify-content:center;
-    padding:24px 18px;
-  }
-  .auth-card{
-    width:100%; max-width:380px;
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:10px;
-    box-shadow:var(--shadow);
-    border-top:4px solid var(--amber);
-    padding:26px 22px 24px;
-    position:relative;
-  }
-  .auth-brand{
-    display:flex; flex-direction:column; align-items:center; text-align:center;
-    margin-bottom:20px;
-  }
-  .auth-brand .brand{font-size:24px; color:var(--ink);}
-  .auth-brand .brand span{color:var(--amber-deep);}
-  .auth-brand .eyebrow{margin-top:4px; color:var(--teal-deep);}
-
-  .auth-error{
-    background:#F5E2DE; border:1px solid var(--danger); color:#7A2E25;
-    border-radius:5px; padding:9px 11px; font-size:12.5px; margin-bottom:14px; line-height:1.4;
-  }
-  .auth-hint{
-    margin-top:16px; text-align:center; font-size:11.5px; color:#9a9481; line-height:1.5;
-  }
-  .auth-hint strong{color:var(--teal-deep); font-weight:600;}
-  .auth-submit{width:100%; margin-top:4px;}
-
-  /* ---------- Topbar user chip ---------- */
-  .user-chip{
-    position:relative; flex:0 0 auto;
-  }
-  .user-chip-btn{
-    display:flex; align-items:center; gap:6px;
-    background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.25);
-    border-radius:999px; padding:4px 10px 4px 4px; cursor:pointer;
-  }
-  .user-avatar{
-    width:22px; height:22px; border-radius:50%; background:var(--amber);
-    color:#fff; font-family:'Space Mono',monospace; font-weight:700; font-size:10.5px;
-    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
-  }
-  .user-chip-btn .user-name{
-    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.03em;
-    font-size:12.5px; color:var(--paper); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  .user-menu{
-    position:absolute; top:calc(100% + 8px); right:0; z-index:40;
-    background:var(--card); border:1px solid var(--line); border-radius:8px;
-    box-shadow:0 10px 24px -8px rgba(0,0,0,0.35);
-    min-width:180px; overflow:hidden;
-  }
-  .user-menu-header{
-    padding:12px 14px; border-bottom:1px solid var(--line-soft);
-  }
-  .user-menu-header .name{font-family:'Space Mono',monospace; font-weight:700; font-size:12.5px; color:var(--ink);}
-  .user-menu-header .email{font-size:11.5px; color:#8b8571; margin-top:2px; word-break:break-all;}
-  .user-menu-lang{padding:10px 14px; border-bottom:1px solid var(--line-soft); display:flex; flex-direction:column; gap:7px;}
-  .user-menu-lang-label{font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.04em; text-transform:uppercase; font-size:11.5px; color:var(--teal-deep);}
-  .lang-toggle{display:flex; border:1.5px solid var(--line); border-radius:5px; overflow:hidden; align-self:flex-start;}
-  .lang-toggle button{
-    font-family:'Space Mono',monospace; font-weight:700; font-size:11.5px;
-    padding:5px 12px; border:0; background:var(--card); color:var(--ink); opacity:.6; cursor:pointer; white-space:nowrap;
-  }
-  .lang-toggle button + button{border-left:1.5px solid var(--line);}
-  .lang-toggle button.active{background:var(--teal); color:#fff; opacity:1;}
-  .user-menu button{
-    width:100%; text-align:left; background:transparent; border:0; padding:11px 14px;
-    font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
-    font-size:12.5px; color:var(--danger); cursor:pointer; display:flex; align-items:center; gap:8px;
-  }
-  .user-menu button:active{background:rgba(181,69,58,0.08);}
-  .user-menu button svg{width:14px; height:14px; stroke:currentColor;}
-  .user-menu-backdrop{position:fixed; inset:0; z-index:35;}
-
-  /* ---------- Narrow phones ---------- */
-  @media (max-width:360px){
-    .topbar{padding:calc(14px + env(safe-area-inset-top)) 12px 12px;}
-    main{padding:8px 12px 24px;}
-    .brand{font-size:18px;}
-    .badge-stub{font-size:10px; padding:2px 5px;}
-    .item-stub{flex-basis:52px;}
-    .sheet{padding:14px 14px calc(18px + env(safe-area-inset-bottom));}
-    .add-loc-form button{padding:0 12px; font-size:13px;}
-    .fab{width:52px; height:52px; right:14px;}
-  }
-
-  /* ---------- Phones: kill page-level scroll/bounce, scroll only inside the app shell ----------
-     Desktop keeps normal document scrolling untouched. */
-  @media (max-width:480px){
-    html, body{
-      height:100%;
-      overflow:hidden;
-      overscroll-behavior-y:none;
-    }
-    #app{
-      height:100dvh;
-      min-height:0;
-      overflow-y:auto;
-      overscroll-behavior-y:contain;
-      -webkit-overflow-scrolling:touch;
-    }
-  }
-</style>
 </head>
 <body>
 <div id="app">
@@ -590,9 +21,9 @@
     <div class="auth-screen">
       <div class="auth-card" style="text-align:center;">
         <div class="auth-brand" style="margin-bottom:6px;">
-          <div class="brand"><template v-if="locale==='ru'">ГДЕ<span>·</span>ЧТО</template><template v-else>{{ t('brand') }}</template></div>
+          <div class="brand"><template v-for="(word, i) in brandWordmark" :key="i"><span v-if="i">·</span>{{ word }}</template></div>
         </div>
-        <div class="eyebrow">{{ t('checkingSession') }}</div>
+        <div class="eyebrow">{{ t('Checking session…') }}</div>
       </div>
     </div>
   </template>
@@ -602,30 +33,26 @@
     <div class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <div class="brand"><template v-if="locale==='ru'">ГДЕ<span>·</span>ЧТО</template><template v-else>{{ t('brand') }}</template></div>
-          <div class="eyebrow">{{ t('authSubtitle') }}</div>
+          <div class="brand"><template v-for="(word, i) in brandWordmark" :key="i"><span v-if="i">·</span>{{ word }}</template></div>
+          <div class="eyebrow">{{ t('Track where your things are') }}</div>
         </div>
 
         <div class="auth-error" v-if="authError">{{ authError }}</div>
 
         <form @submit.prevent="submitAuth">
           <div class="field">
-            <label>{{ t('emailLabel') }}</label>
-            <input type="email" v-model="authForm.email" placeholder="you@example.com" autocomplete="email" required>
+            <label>{{ t('Username') }}</label>
+            <input type="text" v-model="authForm.username" :placeholder="t('At least 3 characters')" autocomplete="username" minlength="3" required>
           </div>
           <div class="field">
-            <label>{{ t('passwordLabel') }}</label>
-            <input type="password" v-model="authForm.password" :placeholder="t('passwordPlaceholder')" autocomplete="current-password" required>
+            <label>{{ t('Password') }}</label>
+            <input type="password" v-model="authForm.password" :placeholder="t('At least 4 characters')" autocomplete="current-password" required>
           </div>
 
           <button type="submit" class="btn btn-primary auth-submit" :disabled="authLoading">
-            {{ authLoading ? t('loggingIn') : t('loginButton') }}
+            {{ authLoading ? t('Logging in…') : t('Log in') }}
           </button>
         </form>
-
-        <div class="auth-hint">
-          {{ t('demoHintPrefix') }} <strong>demo@example.com</strong> / <strong>demo1234</strong>
-        </div>
       </div>
     </div>
   </template>
@@ -633,43 +60,49 @@
   <!-- ===== Main app ===== -->
   <template v-else>
 
+  <!-- ===== Desktop sidebar (hidden on phones; see the min-width:900px block in styles.css) ===== -->
+  <aside class="sidebar-nav">
+    <div class="sidebar-brand"><template v-for="(word, i) in brandWordmark" :key="i"><span v-if="i">·</span>{{ word }}</template></div>
+
+    <div class="search-wrap sidebar-search" v-if="tab==='items'">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="search-input mono" type="text" v-model="query" :placeholder="t('Search items…')">
+    </div>
+
+    <nav class="sidebar-links">
+      <button :class="{active: tab==='items'}" @click="tab='items'">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        {{ t('Items') }}
+      </button>
+      <button :class="{active: tab==='locations'}" @click="tab='locations'">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        {{ t('Locations') }}
+      </button>
+      <button :class="{active: tab==='profile'}" @click="openProfile">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        {{ t('Profile') }}
+      </button>
+    </nav>
+
+    <button class="sidebar-add-btn" @click="openAddItem" v-if="tab==='items'">
+      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      {{ t('Add item') }}
+    </button>
+  </aside>
+
+  <!-- ===== Scrolling content column (topbar + tab content); the sidebar
+       stays fixed while this scrolls, see .content-col in the desktop
+       media query ===== -->
+  <div class="content-col">
+
   <!-- ===== Top bar ===== -->
   <header class="topbar">
     <div class="topbar-row">
-      <div class="brand"><template v-if="locale==='ru'">ГДЕ<span>·</span>ЧТО</template><template v-else>{{ t('brand') }}</template></div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <div class="badge-stub">API: Go + MariaDB</div>
-        <div class="user-chip">
-          <button class="user-chip-btn" @click="showUserMenu=!showUserMenu">
-            <span class="user-avatar">{{ userInitials }}</span>
-            <span class="user-name">{{ currentUser.name }}</span>
-          </button>
-          <div class="user-menu-backdrop" v-if="showUserMenu" @click="showUserMenu=false"></div>
-          <div class="user-menu" v-if="showUserMenu">
-            <div class="user-menu-header">
-              <div class="name">{{ currentUser.name }}</div>
-              <div class="email">{{ currentUser.email }}</div>
-            </div>
-            <div class="user-menu-lang">
-              <div class="user-menu-lang-label">{{ t('interfaceLanguage') }}</div>
-              <div class="lang-toggle">
-                <button type="button" :class="{active: locale==='ru'}" @click="setLanguage('ru')">RU</button>
-                <button type="button" :class="{active: locale==='en'}" @click="setLanguage('en')">EN</button>
-              </div>
-            </div>
-            <button @click="logout">
-              <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              {{ t('logoutLabel') }}
-            </button>
-          </div>
-        </div>
-      </div>
+      <div class="brand"><template v-for="(word, i) in brandWordmark" :key="i"><span v-if="i">·</span>{{ word }}</template></div>
     </div>
-    <div class="subtitle">{{ t('authSubtitle') }} · {{ items.length }} {{ plural(items.length, 'records') }}</div>
-
-    <div class="search-wrap">
+    <div class="search-wrap" v-if="tab==='items'">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input class="search-input mono" type="text" v-model="query" :placeholder="t('searchPlaceholder')">
+      <input class="search-input mono" type="text" v-model="query" :placeholder="t('Search items…')">
     </div>
   </header>
 
@@ -677,10 +110,10 @@
   <template v-if="tab==='items'">
     <div class="chip-rail">
       <button class="chip" :class="{active: activeLocation===null}" @click="activeLocation=null">
-        {{ t('allChip') }} <span class="count">{{ items.length }}</span>
+        {{ t('All') }} <span class="count">{{ items.length }}</span>
       </button>
-      <button class="chip" v-for="loc in locationOptionsFlat" :key="loc.id"
-              :class="{active: activeLocation===loc.id}" @click="activeLocation=loc.id">
+      <button class="chip" v-for="loc in locationFilterChips" :key="loc.id"
+              :class="{active: activeLocation===loc.id, 'chip-ancestor': isAncestorOfActive(loc.id)}" @click="activeLocation=loc.id">
         <span class="chip-indent" v-if="loc.depth>0">{{ '›'.repeat(loc.depth) }}</span>
         <span class="loc-dot" :style="{width:'8px',height:'8px',background:loc.color}"></span>
         {{ loc.name }} <span class="count">{{ totalCountFor(loc.id) }}</span>
@@ -690,7 +123,7 @@
     <main>
       <div class="section-head">
         <span class="eyebrow">{{ filteredItems.length }} {{ plural(filteredItems.length, 'items') }}</span>
-        <span class="eyebrow" v-if="query || activeLocation" style="cursor:pointer; opacity:.7" @click="query=''; activeLocation=null">{{ t('resetFilter') }}</span>
+        <span class="eyebrow" v-if="query || activeLocation" style="cursor:pointer; opacity:.7" @click="query=''; activeLocation=null">{{ t('reset filter ✕') }}</span>
       </div>
 
       <div v-if="loadingItems" class="skeleton">
@@ -699,16 +132,16 @@
 
       <div v-else-if="loadError && items.length===0" class="empty">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16.5" x2="12" y2="16.5"/></svg>
-        <h3>{{ t('backendUnavailableTitle') }}</h3>
+        <h3>{{ t('Backend unavailable') }}</h3>
         <p>{{ loadError }}</p>
-        <button @click="retryLoad">{{ t('retryButton') }}</button>
+        <button @click="loadData">{{ t('Try again') }}</button>
       </div>
 
       <div v-else-if="filteredItems.length===0" class="empty">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
-        <h3>{{ query || activeLocation ? t('emptySearchTitle') : t('emptyTitle') }}</h3>
-        <p>{{ query || activeLocation ? t('emptySearchText') : t('emptyText') }}</p>
-        <button @click="openAddItem">{{ t('addItemButton') }}</button>
+        <h3>{{ query || activeLocation ? t('Nothing found') : t('Nothing here yet') }}</h3>
+        <p>{{ query || activeLocation ? t('Try changing the search query or location filter.') : t('Add your first item and remember where you put it.') }}</p>
+        <button @click="openAddItem">{{ t('Add item') }}</button>
       </div>
 
       <div v-else class="item-list">
@@ -727,13 +160,13 @@
               {{ locationPathString(it.locationId) }}
             </div>
             <div class="item-note" v-if="it.notes">{{ it.notes }}</div>
-            <div class="item-meta">{{ t('updatedPrefix') }} {{ relativeTime(it.updatedAt) }}</div>
+            <div class="item-meta">{{ t('Updated') }} {{ relativeTime(it.updatedAt) }}</div>
           </div>
           <div class="item-actions" @click.stop>
-            <button @click="openEditItem(it)" :title="t('editTitleAttr')">
+            <button @click="openEditItem(it)" :title="t('Edit')">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             </button>
-            <button class="del" @click="askDelete(it)" :title="t('deleteTitleAttr')">
+            <button class="del" @click="askDelete(it)" :title="t('Delete')">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
             </button>
           </div>
@@ -743,10 +176,10 @@
   </template>
 
   <!-- ===== Locations tab ===== -->
-  <template v-else>
+  <template v-else-if="tab==='locations'">
     <main>
       <div class="section-head">
-        <span class="eyebrow">{{ t('storageLocationsHeading') }}</span>
+        <span class="eyebrow">{{ t('Storage locations') }}</span>
       </div>
 
       <div class="loc-list">
@@ -754,7 +187,7 @@
              :class="{'is-nested': node.depth>0}"
              :style="{marginLeft: (node.depth*16)+'px'}">
           <button class="loc-toggle" :class="{collapsed: collapsed[node.loc.id]}"
-                  v-if="node.hasChildren" @click="toggleCollapse(node.loc.id)" :title="t('collapseToggleTitle')">
+                  v-if="node.hasChildren" @click="toggleCollapse(node.loc.id)" :title="t('Collapse/expand')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <span class="loc-toggle-spacer" v-else></span>
@@ -762,27 +195,27 @@
           <span class="loc-name">{{ node.loc.name }}</span>
           <span class="loc-count">{{ totalCountFor(node.loc.id) }} {{ locale==='ru' ? 'вещ.' : plural(totalCountFor(node.loc.id), 'items') }}</span>
           <div class="loc-row-actions">
-            <button class="icon-btn" @click="startSubLocation(node.loc)" :title="t('addSublocationTitle')">
+            <button class="icon-btn" @click="startSubLocation(node.loc)" :title="t('Add nested location')">
               <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
-            <button class="icon-btn del" @click="askDeleteLocation(node.loc)" :title="t('deleteLocationTitleAttr')">
+            <button class="icon-btn del" @click="askDeleteLocation(node.loc)" :title="t('Delete location')">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
             </button>
           </div>
         </div>
       </div>
 
-      <div class="section-head"><span class="eyebrow">{{ t('newLocationHeading') }}</span></div>
+      <div class="section-head"><span class="eyebrow">{{ t('New location') }}</span></div>
 
       <div class="parent-hint" v-if="newLocationParentId">
-        {{ t('insidePrefix') }} {{ locationPathString(newLocationParentId) }}
-        <button @click="newLocationParentId=null">{{ t('removeLabel') }}</button>
+        {{ t('Inside:') }} {{ locationPathString(newLocationParentId) }}
+        <button @click="newLocationParentId=null">{{ t('remove ✕') }}</button>
       </div>
 
       <div class="field" style="margin-top:10px; margin-bottom:8px;">
-        <label>{{ t('parentLocationLabel') }}</label>
+        <label>{{ t('Parent location') }}</label>
         <select v-model="newLocationParentId">
-          <option :value="null">{{ t('noParentOption') }}</option>
+          <option :value="null">{{ t('— No parent (top level) —') }}</option>
           <option v-for="loc in locationOptionsFlat" :key="loc.id" :value="loc.id">
             {{ '—'.repeat(loc.depth) }}{{ loc.depth>0 ? ' ' : '' }}{{ loc.name }}
           </option>
@@ -790,8 +223,8 @@
       </div>
 
       <div class="add-loc-form">
-        <input type="text" v-model="newLocationName" :placeholder="t('locationNamePlaceholder')" ref="newLocationInput" @keyup.enter="createLocation">
-        <button @click="createLocation" :disabled="!newLocationName.trim()">{{ t('addButton') }}</button>
+        <input type="text" v-model="newLocationName" :placeholder="t('e.g. Shelf 2')" ref="newLocationInput" @keyup.enter="createLocation">
+        <button @click="createLocation" :disabled="!newLocationName.trim()">{{ t('Add') }}</button>
       </div>
       <div class="swatches">
         <div class="swatch" v-for="c in palette" :key="c"
@@ -800,6 +233,82 @@
       </div>
     </main>
   </template>
+
+  <!-- ===== Profile tab ===== -->
+  <template v-else-if="tab==='profile'">
+    <main>
+      <div class="section-head"><span class="eyebrow">{{ t('Profile') }}</span></div>
+
+      <div class="profile-page">
+        <div class="profile-cards">
+          <div class="profile-card">
+            <h3>{{ t('Interface language') }}</h3>
+            <select class="lang-select" :value="locale" @change="setLanguage($event.target.value)">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+              <option value="de">Deutsch</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+            </select>
+          </div>
+
+          <div class="profile-card">
+            <h3>{{ t('Location nesting depth in filters') }}</h3>
+            <p class="field-hint">{{ t('How many levels of nested locations to show as filter chips on the Items tab. Leave empty to show all levels.') }}</p>
+            <input class="lang-select depth-input" type="number" min="1" step="1" :placeholder="t('All')"
+                   :value="currentUser.locationFilterDepth || ''" @change="setLocationFilterDepth($event)">
+          </div>
+
+          <div class="profile-card">
+            <h3>{{ t('Change username') }}</h3>
+            <div class="field-error field-error-top" v-if="usernameFormError">{{ usernameFormError }}</div>
+            <form @submit.prevent="submitUsernameChange">
+              <div class="field">
+                <label>{{ t('Username') }}</label>
+                <input type="text" v-model="usernameForm.username" autocomplete="username" minlength="3" required>
+              </div>
+              <div class="field">
+                <label>{{ t('Current password') }}</label>
+                <input type="password" v-model="usernameForm.currentPassword" autocomplete="current-password" required>
+              </div>
+              <button class="btn btn-primary auth-submit" type="submit" :disabled="usernameFormSaving">
+                {{ usernameFormSaving ? t('Saving…') : t('Save') }}
+              </button>
+            </form>
+          </div>
+
+          <div class="profile-card">
+            <h3>{{ t('Change password') }}</h3>
+            <div class="field-error field-error-top" v-if="passwordFormError">{{ passwordFormError }}</div>
+            <form @submit.prevent="submitPasswordChange">
+              <div class="field">
+                <label>{{ t('Current password') }}</label>
+                <input type="password" v-model="passwordForm.currentPassword" autocomplete="current-password" required>
+              </div>
+              <div class="field">
+                <label>{{ t('New password') }}</label>
+                <input type="password" v-model="passwordForm.newPassword" :placeholder="t('At least 4 characters')" autocomplete="new-password" required>
+              </div>
+              <div class="field">
+                <label>{{ t('Confirm new password') }}</label>
+                <input type="password" v-model="passwordForm.confirmPassword" autocomplete="new-password" required>
+              </div>
+              <button class="btn btn-primary auth-submit" type="submit" :disabled="passwordFormSaving">
+                {{ passwordFormSaving ? t('Saving…') : t('Save') }}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <button class="btn-logout" @click="logout">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          {{ t('Log out') }}
+        </button>
+      </div>
+    </main>
+  </template>
+
+  </div>
 
   <!-- ===== FAB ===== -->
   <button class="fab" @click="openAddItem" v-if="tab==='items'">
@@ -810,11 +319,15 @@
   <nav class="bottom-nav">
     <button class="nav-btn" :class="{active: tab==='items'}" @click="tab='items'">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      {{ t('itemsNav') }}
+      {{ t('Items') }}
     </button>
     <button class="nav-btn" :class="{active: tab==='locations'}" @click="tab='locations'">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-      {{ t('locationsNav') }}
+      {{ t('Locations') }}
+    </button>
+    <button class="nav-btn" :class="{active: tab==='profile'}" @click="openProfile">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      {{ t('Profile') }}
     </button>
   </nav>
 
@@ -824,22 +337,22 @@
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-head">
-          <h2>{{ editingId ? t('editItemTitle') : t('newItemTitle') }}</h2>
+          <h2>{{ editingId ? t('Edit item') : t('New item') }}</h2>
           <button @click="closeItemSheet">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
         <div class="field">
-          <label>{{ t('itemNameLabel') }}</label>
-          <input type="text" v-model="form.name" :placeholder="t('itemNamePlaceholder')" ref="nameInput">
+          <label>{{ t('Item name') }}</label>
+          <input type="text" v-model="form.name" :placeholder="t('e.g. Passport')" ref="nameInput">
           <div class="field-error" v-if="formErrors.name">{{ formErrors.name }}</div>
         </div>
 
         <div class="field">
-          <label>{{ t('locationLabel') }}</label>
+          <label>{{ t('Location') }}</label>
           <select v-model="form.locationId">
-            <option :value="null" disabled>{{ t('selectLocationOption') }}</option>
+            <option :value="null" disabled>{{ t('Select a location') }}</option>
             <option v-for="loc in locationOptionsFlat" :key="loc.id" :value="loc.id">
               {{ '—'.repeat(loc.depth) }}{{ loc.depth>0 ? ' ' : '' }}{{ loc.name }}
             </option>
@@ -848,16 +361,16 @@
         </div>
 
         <div class="field">
-          <label>{{ t('notesLabel') }}</label>
-          <textarea v-model="form.notes" rows="2" :placeholder="t('notesPlaceholder')"></textarea>
+          <label>{{ t('Note (optional)') }}</label>
+          <textarea v-model="form.notes" rows="2" :placeholder="t('e.g. top drawer, under documents')"></textarea>
         </div>
 
         <div class="field">
-          <label>{{ t('photosLabel') }}</label>
+          <label>{{ t('Photos (optional)') }}</label>
           <div class="image-grid">
             <div class="image-thumb" v-for="(img, idx) in form.images" :key="idx">
               <img :src="img" @click="openLightbox(form.images, idx)" alt="">
-              <button class="remove-img" @click="removeFormImage(idx)" :title="t('removePhotoTitle')">
+              <button class="remove-img" @click="removeFormImage(idx)" :title="t('Remove photo')">
                 <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -866,13 +379,12 @@
               <input type="file" accept="image/*" multiple style="display:none" @change="onFilesSelected" :disabled="uploadingImages">
             </label>
           </div>
-          <div class="field-hint">{{ t('photosHint') }}</div>
         </div>
 
         <div class="sheet-actions">
-          <button class="btn btn-ghost" @click="closeItemSheet">{{ t('cancelButton') }}</button>
+          <button class="btn btn-ghost" @click="closeItemSheet">{{ t('Cancel') }}</button>
           <button class="btn btn-primary" @click="saveItem" :disabled="saving">
-            {{ saving ? t('savingButton') : t('saveButton') }}
+            {{ saving ? t('Saving…') : t('Save') }}
           </button>
         </div>
       </div>
@@ -883,11 +395,11 @@
   <Transition name="sheet">
     <div class="overlay" v-if="deleteTarget" @click.self="deleteTarget=null">
       <div class="confirm-box">
-        <h3>{{ t('deleteItemConfirmTitle', {name: deleteTarget.name}) }}</h3>
-        <p>{{ t('deleteItemConfirmText') }}</p>
+        <h3>{{ t('Delete "{name}"?', {name: deleteTarget.name}) }}</h3>
+        <p>{{ t("This item's location record will be permanently deleted.") }}</p>
         <div class="confirm-actions">
-          <button class="btn btn-ghost" @click="deleteTarget=null">{{ t('cancelButton') }}</button>
-          <button class="btn btn-danger" @click="confirmDeleteItem">{{ t('deleteButton') }}</button>
+          <button class="btn btn-ghost" @click="deleteTarget=null">{{ t('Cancel') }}</button>
+          <button class="btn btn-danger" @click="confirmDeleteItem">{{ t('Delete') }}</button>
         </div>
       </div>
     </div>
@@ -897,18 +409,18 @@
   <Transition name="sheet">
     <div class="overlay" v-if="deleteLocationTarget" @click.self="deleteLocationTarget=null">
       <div class="confirm-box">
-        <h3>{{ t('deleteLocationConfirmTitle', {name: deleteLocationTarget.name}) }}</h3>
+        <h3>{{ t('Delete location "{name}"?', {name: deleteLocationTarget.name}) }}</h3>
         <p v-if="hasChildLocations(deleteLocationTarget.id)">
-          {{ t('hasChildrenText') }}
+          {{ t('It contains nested locations. Delete or move them first.') }}
         </p>
         <p v-else-if="directCountFor(deleteLocationTarget.id) > 0">
-          {{ t('hasItemsText', {n: directCountFor(deleteLocationTarget.id), word: plural(directCountFor(deleteLocationTarget.id), 'items')}) }}
+          {{ t('This location holds {n} {word}. Move them to another location first.', {n: directCountFor(deleteLocationTarget.id), word: plural(directCountFor(deleteLocationTarget.id), 'items')}) }}
         </p>
-        <p v-else>{{ t('willDeleteText') }}</p>
+        <p v-else>{{ t('This storage location will be deleted.') }}</p>
         <div class="confirm-actions">
-          <button class="btn btn-ghost" @click="deleteLocationTarget=null">{{ t('cancelButton') }}</button>
+          <button class="btn btn-ghost" @click="deleteLocationTarget=null">{{ t('Cancel') }}</button>
           <button class="btn btn-danger" @click="confirmDeleteLocation"
-                  :disabled="hasChildLocations(deleteLocationTarget.id) || directCountFor(deleteLocationTarget.id) > 0">{{ t('deleteButton') }}</button>
+                  :disabled="hasChildLocations(deleteLocationTarget.id) || directCountFor(deleteLocationTarget.id) > 0">{{ t('Delete') }}</button>
         </div>
       </div>
     </div>
@@ -939,834 +451,11 @@
     </div>
   </Transition>
 
-  <div class="footnote" v-if="tab==='items'">{{ t('footnote') }}</div>
-
   </template>
 </div>
 
-<script>
-/* =========================================================================
-   I18N — русский и английский
-   На экране входа язык определяется по браузеру (по умолчанию английский).
-   После входа язык берётся из настройки пользователя в БД (см. PublicUser.language).
-   ========================================================================= */
-function detectBrowserLocale() {
-  const langs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || ''];
-  for (const l of langs) {
-    if (l && l.toLowerCase().startsWith('ru')) return 'ru';
-  }
-  return 'en';
-}
-
-const MESSAGES = {
-  en: {
-    brand: 'WHEREABOUTS',
-    pageTitle: 'Whereabouts — item tracker',
-    checkingSession: 'Checking session…',
-    authSubtitle: 'Track where your things are',
-    emailLabel: 'Email',
-    passwordLabel: 'Password',
-    passwordPlaceholder: 'At least 4 characters',
-    loginButton: 'Log in',
-    loggingIn: 'Logging in…',
-    demoHintPrefix: 'Demo access:',
-    emailPasswordRequired: 'Please fill in email and password',
-
-    searchPlaceholder: 'Search items…',
-    logoutLabel: 'Log out',
-    interfaceLanguage: 'Interface language',
-
-    allChip: 'All',
-    resetFilter: 'reset filter ✕',
-    backendUnavailableTitle: 'Backend unavailable',
-    retryButton: 'Try again',
-    emptySearchTitle: 'Nothing found',
-    emptyTitle: 'Nothing here yet',
-    emptySearchText: 'Try changing the search query or location filter.',
-    emptyText: 'Add your first item and remember where you put it.',
-    addItemButton: 'Add item',
-    editTitleAttr: 'Edit',
-    deleteTitleAttr: 'Delete',
-    updatedPrefix: 'Updated',
-
-    storageLocationsHeading: 'Storage locations',
-    collapseToggleTitle: 'Collapse/expand',
-    addSublocationTitle: 'Add nested location',
-    deleteLocationTitleAttr: 'Delete location',
-    newLocationHeading: 'New location',
-    insidePrefix: 'Inside:',
-    removeLabel: 'remove ✕',
-    parentLocationLabel: 'Parent location',
-    noParentOption: '— No parent (top level) —',
-    locationNamePlaceholder: 'e.g. Shelf 2',
-    addButton: 'Add',
-
-    itemsNav: 'Items',
-    locationsNav: 'Locations',
-
-    editItemTitle: 'Edit item',
-    newItemTitle: 'New item',
-    itemNameLabel: 'Item name',
-    itemNamePlaceholder: 'e.g. Passport',
-    locationLabel: 'Location',
-    selectLocationOption: 'Select a location',
-    notesLabel: 'Note (optional)',
-    notesPlaceholder: 'e.g. top drawer, under documents',
-    photosLabel: 'Photos (optional)',
-    removePhotoTitle: 'Remove photo',
-    photosHint: 'Photos are stored in the database with the item record',
-    cancelButton: 'Cancel',
-    saveButton: 'Save',
-    savingButton: 'Saving…',
-
-    nameRequired: 'Enter the item name',
-    locationRequired: 'Select a location',
-    uploadFailed: 'Failed to upload photo',
-
-    deleteItemConfirmTitle: 'Delete "{name}"?',
-    deleteItemConfirmText: "This item's location record will be permanently deleted.",
-    deleteLocationConfirmTitle: 'Delete location "{name}"?',
-    hasChildrenText: 'It contains nested locations. Delete or move them first.',
-    hasItemsText: 'This location holds {n} {word}. Move them to another location first.',
-    willDeleteText: 'This storage location will be deleted.',
-    deleteButton: 'Delete',
-
-    itemUpdatedToast: 'Item updated',
-    itemAddedToast: 'Item added',
-    itemDeletedToast: 'Item deleted',
-    locationAddedToast: 'Location added',
-    locationDeletedToast: 'Location deleted',
-    errorPrefix: 'Error: ',
-
-    footnote: 'Data is stored on the server (Go + MariaDB)',
-    noLocationFallback: 'No location',
-
-    justNow: 'just now',
-    agoSuffix: 'ago',
-
-    requestErrorGeneric: 'Request error ({status})',
-    backendUnavailable: 'Backend unavailable. Check that the Go server is running.',
-  },
-  ru: {
-    brand: 'ГДЕ·ЧТО',
-    pageTitle: 'Где что — учёт вещей',
-    checkingSession: 'Проверяем сессию…',
-    authSubtitle: 'Учёт местонахождения вещей',
-    emailLabel: 'Email',
-    passwordLabel: 'Пароль',
-    passwordPlaceholder: 'Минимум 4 символа',
-    loginButton: 'Войти',
-    loggingIn: 'Проверяем…',
-    demoHintPrefix: 'Демо-доступ:',
-    emailPasswordRequired: 'Заполните email и пароль',
-
-    searchPlaceholder: 'Найти вещь…',
-    logoutLabel: 'Выйти',
-    interfaceLanguage: 'Язык интерфейса',
-
-    allChip: 'Все',
-    resetFilter: 'сбросить фильтр ✕',
-    backendUnavailableTitle: 'Бэкенд недоступен',
-    retryButton: 'Повторить попытку',
-    emptySearchTitle: 'Ничего не найдено',
-    emptyTitle: 'Пока пусто',
-    emptySearchText: 'Попробуйте изменить запрос или фильтр по месту.',
-    emptyText: 'Добавьте первую вещь и запомните, куда вы её положили.',
-    addItemButton: 'Добавить вещь',
-    editTitleAttr: 'Изменить',
-    deleteTitleAttr: 'Удалить',
-    updatedPrefix: 'Обновлено',
-
-    storageLocationsHeading: 'Места хранения',
-    collapseToggleTitle: 'Свернуть/развернуть',
-    addSublocationTitle: 'Добавить вложенное место',
-    deleteLocationTitleAttr: 'Удалить место',
-    newLocationHeading: 'Новое место',
-    insidePrefix: 'Внутри:',
-    removeLabel: 'убрать ✕',
-    parentLocationLabel: 'Родительское место',
-    noParentOption: '— Без родителя (верхний уровень) —',
-    locationNamePlaceholder: 'Например: Полка 2',
-    addButton: 'Добавить',
-
-    itemsNav: 'Вещи',
-    locationsNav: 'Места',
-
-    editItemTitle: 'Изменить вещь',
-    newItemTitle: 'Новая вещь',
-    itemNameLabel: 'Название вещи',
-    itemNamePlaceholder: 'Например: Паспорт',
-    locationLabel: 'Место хранения',
-    selectLocationOption: 'Выберите место',
-    notesLabel: 'Заметка (необязательно)',
-    notesPlaceholder: 'Например: в верхнем ящике, под документами',
-    photosLabel: 'Фотографии (необязательно)',
-    removePhotoTitle: 'Удалить фото',
-    photosHint: 'Фото сохраняются в базе вместе с записью о вещи',
-    cancelButton: 'Отмена',
-    saveButton: 'Сохранить',
-    savingButton: 'Сохранение…',
-
-    nameRequired: 'Введите название вещи',
-    locationRequired: 'Выберите место хранения',
-    uploadFailed: 'Не удалось загрузить фото',
-
-    deleteItemConfirmTitle: 'Удалить «{name}»?',
-    deleteItemConfirmText: 'Запись о местонахождении этой вещи будет удалена без возможности восстановления.',
-    deleteLocationConfirmTitle: 'Удалить место «{name}»?',
-    hasChildrenText: 'Внутри есть вложенные места. Сначала удалите или перенесите их.',
-    hasItemsText: 'В этом месте хранится {n} {word}. Сначала перенесите их в другое место.',
-    willDeleteText: 'Это место хранения будет удалено.',
-    deleteButton: 'Удалить',
-
-    itemUpdatedToast: 'Запись обновлена',
-    itemAddedToast: 'Вещь добавлена',
-    itemDeletedToast: 'Вещь удалена',
-    locationAddedToast: 'Место добавлено',
-    locationDeletedToast: 'Место удалено',
-    errorPrefix: 'Ошибка: ',
-
-    footnote: 'Данные хранятся на сервере (Go + MariaDB)',
-    noLocationFallback: 'Без места',
-
-    justNow: 'только что',
-    agoSuffix: 'назад',
-
-    requestErrorGeneric: 'Ошибка запроса ({status})',
-    backendUnavailable: 'Бэкенд недоступен. Проверьте, что сервер на Go запущен.',
-  },
-};
-
-const PLURALS = {
-  en: {
-    items: ['item', 'items'],
-    records: ['record', 'records'],
-    minutes: ['minute', 'minutes'],
-    hours: ['hour', 'hours'],
-    days: ['day', 'days'],
-    months: ['month', 'months'],
-  },
-  ru: {
-    items: ['вещь', 'вещи', 'вещей'],
-    records: ['запись', 'записи', 'записей'],
-    minutes: ['минуту', 'минуты', 'минут'],
-    hours: ['час', 'часа', 'часов'],
-    days: ['день', 'дня', 'дней'],
-    months: ['месяц', 'месяца', 'месяцев'],
-  },
-};
-
-// Русский требует трёх форм (1/2-4/5+ с учётом исключений на 11-14), английский — двух.
-function pluralize(locale, n, key) {
-  const forms = PLURALS[locale][key];
-  if (locale === 'ru') {
-    const mod10 = n % 10, mod100 = n % 100;
-    if (mod10 === 1 && mod100 !== 11) return forms[0];
-    if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return forms[1];
-    return forms[2];
-  }
-  return n === 1 ? forms[0] : forms[1];
-}
-
-function translate(locale, key, params) {
-  let s = (MESSAGES[locale] && MESSAGES[locale][key]) ?? MESSAGES.en[key] ?? key;
-  if (params) {
-    for (const k of Object.keys(params)) {
-      s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), params[k]);
-    }
-  }
-  return s;
-}
-
-// Локаль, которую использует API-клиент для локализации собственных сообщений
-// об ошибках (сеть недоступна, неожиданный статус и т.п.). Vue-компонент
-// держит её в синхроне со своим состоянием locale через setApiLocale().
-let apiLocale = detectBrowserLocale();
-function setApiLocale(locale) { apiLocale = locale; }
-
-// Бэкенд всегда отвечает по-русски (см. handlers.go/auth.go) — полноценный
-// i18n на сервере ради полутора десятков строк был бы избыточен, поэтому
-// известные сообщения переводим здесь по точному совпадению.
-const SERVER_ERROR_EN = {
-  'необходима авторизация': 'Authentication required',
-  'нет сессии': 'No session',
-  'сессия не найдена': 'Session not found',
-  'сессия истекла': 'Session expired',
-  'не авторизован': 'Not authenticated',
-  'некорректное тело запроса': 'Invalid request body',
-  'укажите email': 'Please enter an email',
-  'пароль должен быть не короче 4 символов': 'Password must be at least 4 characters',
-  'не удалось обработать пароль': 'Failed to process password',
-  'пользователь с таким email уже зарегистрирован': 'A user with this email is already registered',
-  'не удалось создать пользователя': 'Failed to create user',
-  'пользователь создан, но не удалось начать сессию': 'User created, but failed to start a session',
-  'неверный email или пароль': 'Incorrect email or password',
-  'не удалось начать сессию': 'Failed to start a session',
-  'недопустимый язык': 'Unsupported language',
-  'не удалось сохранить язык': 'Failed to save language preference',
-  'не удалось получить вещи': 'Failed to load items',
-  'не удалось прочитать вещь': 'Failed to read item',
-  'не удалось получить фотографии': 'Failed to load photos',
-  'проверьте поля формы': 'Please check the form fields',
-  'не удалось проверить место': 'Failed to verify location',
-  'указанное место хранения не найдено': 'The specified location was not found',
-  'не удалось сохранить вещь': 'Failed to save item',
-  'не удалось сохранить фотографии': 'Failed to save photos',
-  'вещь сохранена, но не удалось её прочитать': 'Item saved, but failed to read it back',
-  'запись не найдена': 'Record not found',
-  'не удалось обновить вещь': 'Failed to update item',
-  'не удалось обновить фотографии': 'Failed to update photos',
-  'вещь обновлена, но не удалось её прочитать': 'Item updated, but failed to read it back',
-  'не удалось удалить вещь': 'Failed to delete item',
-  'не удалось получить места': 'Failed to load locations',
-  'не удалось прочитать место': 'Failed to read location',
-  'введите название места': 'Please enter a location name',
-  'не удалось проверить родительское место': 'Failed to verify parent location',
-  'родительское место не найдено': 'Parent location not found',
-  'не удалось сохранить место': 'Failed to save location',
-  'не удалось проверить вложенные места': 'Failed to check nested locations',
-  'у этого места есть вложенные места — сначала удалите или перенесите их': 'This location has nested locations — delete or move them first',
-  'не удалось проверить вещи в этом месте': 'Failed to check items in this location',
-  'в этом месте есть вещи — сначала перенесите их в другое место': 'This location has items in it — move them elsewhere first',
-  'не удалось удалить место': 'Failed to delete location',
-  'место не найдено': 'Location not found',
-  'не похоже на data URL': 'does not look like a data URL',
-  'некорректный data URL: нет запятой-разделителя': 'invalid data URL: missing comma separator',
-  'не удалось сжать изображение': 'failed to compress image',
-};
-
-// Переводит сообщение об ошибке с бэкенда на текущий язык. Составные сообщения
-// ("некорректное тело запроса: ...", "фото №N: не удалось обработать (...)")
-// переводятся по частям рекурсивно; нераспознанное — остаётся как есть.
-function localizeServerMessage(locale, message) {
-  if (locale !== 'en' || !message) return message;
-  if (SERVER_ERROR_EN[message]) return SERVER_ERROR_EN[message];
-
-  let m = message.match(/^слишком большой запрос \(максимум (\d+) МБ\)$/);
-  if (m) return `Request too large (max ${m[1]} MB)`;
-
-  m = message.match(/^некорректное тело запроса: (.+)$/);
-  if (m) return `Invalid request body: ${localizeServerMessage('en', m[1])}`;
-
-  m = message.match(/^фото №(\d+): не удалось обработать \((.+)\)$/);
-  if (m) return `Photo #${m[1]}: failed to process (${localizeServerMessage('en', m[2])})`;
-
-  return message;
-}
-
-/* =========================================================================
-   API-КЛИЕНТ
-   Ходит на настоящий бэкенд на Go (см. /backend). Если фронтенд открыт
-   не с того же хоста, что и бэкенд, поменяйте API_BASE ниже.
-   ========================================================================= */
-const API_BASE = '/api';
-
-// Вызывается при получении 401 от любого запроса — например, если сессия
-// истекла в другой вкладке. Приложение подписывается на это в mounted().
-let unauthorizedHandler = null;
-function onUnauthorized(fn) { unauthorizedHandler = fn; }
-
-async function handleResponse(res) {
-  if (res.status === 204) return null;
-  let data = null;
-  try { data = await res.json(); } catch (e) { /* пустое тело ответа */ }
-  if (res.status === 401 && unauthorizedHandler) {
-    unauthorizedHandler();
-  }
-  if (!res.ok) {
-    const raw = (data && data.error) ? data.error : translate(apiLocale, 'requestErrorGeneric', { status: res.status });
-    throw new Error(localizeServerMessage(apiLocale, raw));
-  }
-  return data;
-}
-
-async function apiFetch(path, options) {
-  let res;
-  try {
-    res = await fetch(API_BASE + path, {
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin', // отправлять httpOnly-куку сессии
-      ...options,
-    });
-  } catch (e) {
-    throw new Error(translate(apiLocale, 'backendUnavailable'));
-  }
-  return handleResponse(res);
-}
-
-const api = {
-  listItems() {
-    return apiFetch('/items');
-  },
-  createItem(payload) {
-    return apiFetch('/items', { method: 'POST', body: JSON.stringify(payload) });
-  },
-  updateItem(id, payload) {
-    return apiFetch('/items/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(payload) });
-  },
-  deleteItem(id) {
-    return apiFetch('/items/' + encodeURIComponent(id), { method: 'DELETE' });
-  },
-  listLocations() {
-    return apiFetch('/locations');
-  },
-  createLocation(payload) {
-    return apiFetch('/locations', { method: 'POST', body: JSON.stringify(payload) });
-  },
-  deleteLocation(id) {
-    return apiFetch('/locations/' + encodeURIComponent(id), { method: 'DELETE' });
-  },
-};
-
-/* =========================================================================
-   АВТОРИЗАЦИЯ
-   Ходит на настоящий бэкенд: /api/auth/login, /api/auth/logout, /api/auth/me.
-   Сессия — httpOnly-кука, которую выставляет сервер; на клиенте мы её
-   не читаем и не храним, только полагаемся на credentials: 'same-origin'.
-   ========================================================================= */
-const authApi = {
-  async login({ email, password }) {
-    return apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-  },
-  async logout() {
-    return apiFetch('/auth/logout', { method: 'POST' });
-  },
-  async me() {
-    return apiFetch('/auth/me');
-  },
-  async updateLanguage(language) {
-    return apiFetch('/auth/language', { method: 'PATCH', body: JSON.stringify({ language }) });
-  },
-};
-
-const { createApp } = Vue;
-
-createApp({
-  data() {
-    return {
-      locale: apiLocale, // до входа — язык браузера; после — язык из настройки пользователя
-      currentUser: null,
-      authChecking: true,
-      authForm: { email: '', password: '' },
-      authError: '',
-      authLoading: false,
-      showUserMenu: false,
-
-      tab: 'items',
-      items: [],
-      locations: [],
-      loadingItems: true,
-      loadError: '',
-
-      query: '',
-      activeLocation: null,
-
-      palette: ['#3D6B63','#D98E2B','#8E5A9E','#B5453A','#4A6FA5','#5C7A29','#A85C8C'],
-      newLocationName: '',
-      newLocationColor: '#3D6B63',
-      newLocationParentId: null,
-      collapsed: {},
-
-      showItemSheet: false,
-      editingId: null,
-      form: { name: '', locationId: null, notes: '', images: [] },
-      formErrors: {},
-      saving: false,
-      uploadingImages: false,
-
-      lightbox: { open: false, images: [], index: 0 },
-
-      deleteTarget: null,
-      deleteLocationTarget: null,
-
-      toastMessage: '',
-      toastTimer: null,
-    };
-  },
-  computed: {
-    userInitials() {
-      if (!this.currentUser || !this.currentUser.name) return '?';
-      return this.currentUser.name.trim().slice(0, 1).toUpperCase();
-    },
-    filteredItems() {
-      const q = this.query.trim().toLowerCase();
-      const scope = this.activeLocation ? this.getDescendantIds(this.activeLocation) : null;
-      return this.items.filter(it => {
-        const matchesLocation = scope ? scope.has(it.locationId) : true;
-        const matchesQuery = q
-          ? (it.name.toLowerCase().includes(q) ||
-             (it.notes || '').toLowerCase().includes(q) ||
-             this.locationPathString(it.locationId).toLowerCase().includes(q))
-          : true;
-        return matchesLocation && matchesQuery;
-      }).sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-    },
-    // Плоский список мест в порядке обхода в глубину, с указанием уровня вложенности.
-    // Используется в селектах и в чипах фильтра — всегда полностью развёрнут.
-    locationOptionsFlat() {
-      const result = [];
-      const walk = (parentId, depth) => {
-        this.locations
-          .filter(l => (l.parentId || null) === parentId)
-          .forEach(l => {
-            result.push({ ...l, depth });
-            walk(l.id, depth + 1);
-          });
-      };
-      walk(null, 0);
-      return result;
-    },
-    // То же самое, но с учётом свёрнутых узлов — для дерева на вкладке "Места".
-    locationTreeFlat() {
-      const result = [];
-      const walk = (parentId, depth) => {
-        this.locations
-          .filter(l => (l.parentId || null) === parentId)
-          .forEach(l => {
-            const hasChildren = this.locations.some(c => c.parentId === l.id);
-            result.push({ loc: l, depth, hasChildren });
-            if (hasChildren && !this.collapsed[l.id]) walk(l.id, depth + 1);
-          });
-      };
-      walk(null, 0);
-      return result;
-    },
-  },
-  async mounted() {
-    onUnauthorized(() => {
-      // Сессия протухла или её отменили (например, в другой вкладке) —
-      // возвращаем на экран входа.
-      this.currentUser = null;
-      this.showUserMenu = false;
-    });
-
-    try {
-      this.currentUser = await authApi.me();
-      this.locale = this.currentUser.language === 'ru' ? 'ru' : 'en';
-    } catch (e) {
-      // Не авторизованы — это нормальное состояние, просто покажем экран входа.
-    } finally {
-      this.authChecking = false;
-    }
-
-    if (this.currentUser) {
-      await this.loadData();
-    }
-  },
-  watch: {
-    showItemSheet() { this.syncBodyScrollLock(); },
-    deleteTarget() { this.syncBodyScrollLock(); },
-    deleteLocationTarget() { this.syncBodyScrollLock(); },
-    'lightbox.open'() { this.syncBodyScrollLock(); },
-    locale: {
-      immediate: true,
-      handler(val) {
-        setApiLocale(val);
-        document.documentElement.lang = val;
-        document.title = translate(val, 'pageTitle');
-      },
-    },
-  },
-  methods: {
-    t(key, params) {
-      return translate(this.locale, key, params);
-    },
-    plural(n, key) {
-      return pluralize(this.locale, n, key);
-    },
-    async setLanguage(lang) {
-      this.showUserMenu = false;
-      if (lang === this.locale || !this.currentUser) return;
-      const previous = this.locale;
-      this.locale = lang;
-      try {
-        const updated = await authApi.updateLanguage(lang);
-        this.currentUser = updated;
-      } catch (e) {
-        this.locale = previous;
-        this.showToast(this.t('errorPrefix') + e.message);
-      }
-    },
-    async loadData() {
-      this.loadingItems = true;
-      this.loadError = '';
-      try {
-        const [items, locations] = await Promise.all([api.listItems(), api.listLocations()]);
-        this.items = items || [];
-        this.locations = locations || [];
-      } catch (e) {
-        this.loadError = e.message;
-        this.showToast(e.message);
-      } finally {
-        this.loadingItems = false;
-      }
-    },
-    async retryLoad() {
-      await this.loadData();
-    },
-    locationOf(id) {
-      return this.locations.find(l => l.id === id) || { name: this.t('noLocationFallback'), color: '#9a9481' };
-    },
-    // Прямые дочерние места (не рекурсивно).
-    childLocations(id) {
-      return this.locations.filter(l => l.parentId === id);
-    },
-    hasChildLocations(id) {
-      return this.locations.some(l => l.parentId === id);
-    },
-    // Множество id самого места и всех его потомков любого уровня — удобно для фильтрации.
-    getDescendantIds(id) {
-      const ids = new Set([id]);
-      const collect = (parentId) => {
-        this.locations.filter(l => l.parentId === parentId).forEach(child => {
-          ids.add(child.id);
-          collect(child.id);
-        });
-      };
-      collect(id);
-      return ids;
-    },
-    // Цепочка мест от корня до данного места включительно.
-    locationPath(id) {
-      const path = [];
-      let current = this.locations.find(l => l.id === id);
-      let guard = 0;
-      while (current && guard < 20) {
-        path.unshift(current);
-        current = current.parentId ? this.locations.find(l => l.id === current.parentId) : null;
-        guard++;
-      }
-      return path;
-    },
-    locationPathString(id) {
-      const path = this.locationPath(id);
-      return path.length ? path.map(l => l.name).join(' › ') : this.t('noLocationFallback');
-    },
-    // Вещи в самом месте, без учёта вложенных.
-    directCountFor(locationId) {
-      return this.items.filter(i => i.locationId === locationId).length;
-    },
-    // Вещи в месте и во всех его вложенных местах — то, что показываем в интерфейсе.
-    totalCountFor(locationId) {
-      const ids = this.getDescendantIds(locationId);
-      return this.items.filter(i => ids.has(i.locationId)).length;
-    },
-    countFor(locationId) {
-      return this.totalCountFor(locationId);
-    },
-    toggleCollapse(id) {
-      this.collapsed[id] = !this.collapsed[id];
-    },
-    startSubLocation(loc) {
-      this.newLocationParentId = loc.id;
-      this.$nextTick(() => this.$refs.newLocationInput?.focus());
-    },
-    initials(name) {
-      return (name || '?').trim().slice(0,2).toUpperCase();
-    },
-    relativeTime(iso) {
-      const diffMs = Date.now() - new Date(iso).getTime();
-      const mins = Math.round(diffMs / 60000);
-      if (mins < 1) return this.t('justNow');
-      if (mins < 60) return `${mins} ${this.plural(mins, 'minutes')} ${this.t('agoSuffix')}`;
-      const hours = Math.round(mins/60);
-      if (hours < 24) return `${hours} ${this.plural(hours, 'hours')} ${this.t('agoSuffix')}`;
-      const days = Math.round(hours/24);
-      if (days < 30) return `${days} ${this.plural(days, 'days')} ${this.t('agoSuffix')}`;
-      const months = Math.round(days/30);
-      return `${months} ${this.plural(months, 'months')} ${this.t('agoSuffix')}`;
-    },
-    showToast(msg) {
-      this.toastMessage = msg;
-      clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => this.toastMessage = '', 2200);
-    },
-    // На телефонах открытый bottom sheet/диалог не должен позволять скроллить фон под собой.
-    syncBodyScrollLock() {
-      const anyOpen = this.showItemSheet || !!this.deleteTarget || !!this.deleteLocationTarget || this.lightbox.open;
-      document.body.classList.toggle('modal-open', anyOpen);
-    },
-
-    async submitAuth() {
-      this.authError = '';
-      const email = this.authForm.email.trim();
-      const password = this.authForm.password;
-
-      if (!email || !password) {
-        this.authError = this.t('emailPasswordRequired');
-        return;
-      }
-
-      this.authLoading = true;
-      try {
-        const user = await authApi.login({ email, password });
-        this.currentUser = user;
-        this.locale = user.language === 'ru' ? 'ru' : 'en';
-        this.authForm = { email: '', password: '' };
-        await this.loadData();
-      } catch (e) {
-        this.authError = e.message;
-      } finally {
-        this.authLoading = false;
-      }
-    },
-    async logout() {
-      this.showUserMenu = false;
-      try {
-        await authApi.logout();
-      } catch (e) {
-        // Даже если запрос на выход не дошёл, сбрасываем сессию локально.
-      }
-      this.currentUser = null;
-      this.items = [];
-      this.locations = [];
-      // Возвращаемся на экран входа — там язык снова определяется по браузеру.
-      this.locale = detectBrowserLocale();
-    },
-
-    openAddItem() {
-      this.editingId = null;
-      this.form = { name: '', locationId: this.locations[0]?.id ?? null, notes: '', images: [] };
-      this.formErrors = {};
-      this.showItemSheet = true;
-      this.$nextTick(() => this.$refs.nameInput?.focus());
-    },
-    openEditItem(it) {
-      this.editingId = it.id;
-      this.form = { name: it.name, locationId: it.locationId, notes: it.notes || '', images: [...(it.images || [])] };
-      this.formErrors = {};
-      this.showItemSheet = true;
-    },
-
-    async onFilesSelected(e) {
-      const files = Array.from(e.target.files || []);
-      e.target.value = '';
-      if (!files.length) return;
-      this.uploadingImages = true;
-      try {
-        for (const file of files) {
-          if (!file.type.startsWith('image/')) continue;
-          const dataUrl = await this.resizeImage(file, 1000);
-          this.form.images.push(dataUrl);
-        }
-      } catch (err) {
-        this.showToast(this.t('uploadFailed'));
-      } finally {
-        this.uploadingImages = false;
-      }
-    },
-    resizeImage(file, maxDim) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(reader.error);
-        reader.onload = () => {
-          const img = new Image();
-          img.onerror = reject;
-          img.onload = () => {
-            let { width, height } = img;
-            if (width > maxDim || height > maxDim) {
-              const scale = maxDim / Math.max(width, height);
-              width = Math.round(width * scale);
-              height = Math.round(height * scale);
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = width; canvas.height = height;
-            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.82));
-          };
-          img.src = reader.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    },
-    removeFormImage(idx) {
-      this.form.images.splice(idx, 1);
-    },
-    openLightbox(images, index) {
-      this.lightbox = { open: true, images, index };
-    },
-    closeLightbox() {
-      this.lightbox.open = false;
-    },
-    lightboxStep(dir) {
-      const len = this.lightbox.images.length;
-      this.lightbox.index = (this.lightbox.index + dir + len) % len;
-    },
-    closeItemSheet() {
-      this.showItemSheet = false;
-    },
-    validateForm() {
-      const errs = {};
-      if (!this.form.name.trim()) errs.name = this.t('nameRequired');
-      if (!this.form.locationId) errs.locationId = this.t('locationRequired');
-      this.formErrors = errs;
-      return Object.keys(errs).length === 0;
-    },
-    async saveItem() {
-      if (!this.validateForm()) return;
-      this.saving = true;
-      try {
-        const payload = { name: this.form.name.trim(), locationId: this.form.locationId, notes: this.form.notes.trim(), images: [...this.form.images] };
-        if (this.editingId) {
-          const updated = await api.updateItem(this.editingId, payload);
-          const idx = this.items.findIndex(i => i.id === this.editingId);
-          if (idx !== -1) this.items.splice(idx, 1, updated);
-          this.showToast(this.t('itemUpdatedToast'));
-        } else {
-          const created = await api.createItem(payload);
-          this.items.unshift(created);
-          this.showToast(this.t('itemAddedToast'));
-        }
-        this.showItemSheet = false;
-      } catch (e) {
-        this.showToast(this.t('errorPrefix') + e.message);
-      } finally {
-        this.saving = false;
-      }
-    },
-
-    askDelete(it) { this.deleteTarget = it; },
-    async confirmDeleteItem() {
-      const target = this.deleteTarget;
-      this.deleteTarget = null;
-      try {
-        await api.deleteItem(target.id);
-        this.items = this.items.filter(i => i.id !== target.id);
-        this.showToast(this.t('itemDeletedToast'));
-      } catch (e) {
-        this.showToast(this.t('errorPrefix') + e.message);
-      }
-    },
-
-    async createLocation() {
-      const name = this.newLocationName.trim();
-      if (!name) return;
-      try {
-        const created = await api.createLocation({ name, color: this.newLocationColor, parentId: this.newLocationParentId });
-        this.locations.push(created);
-        if (created.parentId) this.collapsed[created.parentId] = false;
-        this.newLocationName = '';
-        this.showToast(this.t('locationAddedToast'));
-      } catch (e) {
-        this.showToast(this.t('errorPrefix') + e.message);
-      }
-    },
-    askDeleteLocation(loc) { this.deleteLocationTarget = loc; },
-    async confirmDeleteLocation() {
-      const target = this.deleteLocationTarget;
-      if (this.hasChildLocations(target.id) || this.directCountFor(target.id) > 0) return;
-      this.deleteLocationTarget = null;
-      try {
-        await api.deleteLocation(target.id);
-        this.locations = this.locations.filter(l => l.id !== target.id);
-        if (this.activeLocation === target.id) this.activeLocation = null;
-        this.showToast(this.t('locationDeletedToast'));
-      } catch (e) {
-        this.showToast(this.t('errorPrefix') + e.message);
-      }
-    },
-  },
-}).mount('#app');
-</script>
+<script src="i18n.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

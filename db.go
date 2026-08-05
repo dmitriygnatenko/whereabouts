@@ -87,20 +87,32 @@ func openDB(cfg dbConfig) (*sql.DB, error) {
 // чтобы не зависеть от версии MariaDB, где "IF NOT EXISTS" для индексов
 // поддерживается не везде.
 func migrate(db *sql.DB) error {
+	if err := renameEmailColumnToUsername(db); err != nil {
+		return fmt.Errorf("миграция email -> username: %w", err)
+	}
+	if err := renameDataURLColumnToURL(db); err != nil {
+		return fmt.Errorf("миграция data_url -> url: %w", err)
+	}
+
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id            VARCHAR(64) NOT NULL PRIMARY KEY,
 			name          VARCHAR(255) NOT NULL,
-			email         VARCHAR(255) NOT NULL,
+			username      VARCHAR(255) NOT NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			language      VARCHAR(8) NOT NULL DEFAULT 'en',
+			location_filter_depth INT NOT NULL DEFAULT 0,
 			created_at    VARCHAR(40) NOT NULL,
-			UNIQUE KEY uniq_users_email (email)
+			UNIQUE KEY uniq_users_username (username)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
 		// Для баз, созданных до появления колонки language — добавляем её отдельно
 		// (IF NOT EXISTS поддерживается MariaDB/MySQL 8+, идемпотентно при рестартах).
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(8) NOT NULL DEFAULT 'en';`,
+
+		// location_filter_depth — сколько уровней вложенности мест показывать
+		// в чипах-фильтрах на вкладке "Вещи". 0 = без ограничения (показывать все).
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS location_filter_depth INT NOT NULL DEFAULT 0;`,
 
 		`CREATE TABLE IF NOT EXISTS sessions (
 			token      VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -136,10 +148,12 @@ func migrate(db *sql.DB) error {
 				REFERENCES locations (id) ON DELETE RESTRICT
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
+		// url — ссылка на файл фотографии (см. imagestore.go), не сами байты:
+		// файлы лежат на диске в web/files, в БД только путь к ним.
 		`CREATE TABLE IF NOT EXISTS item_images (
 			id       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			item_id  VARCHAR(64) NOT NULL,
-			data_url MEDIUMTEXT NOT NULL,
+			url      MEDIUMTEXT NOT NULL,
 			position INT NOT NULL DEFAULT 0,
 			KEY idx_item_images_item (item_id),
 			CONSTRAINT fk_item_images_item FOREIGN KEY (item_id)
@@ -154,7 +168,47 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// seedDemoUser создаёт демо-пользователя (demo@example.com / demo1234),
+// renameEmailColumnToUsername переименовывает колонку email в username (вместе
+// с её уникальным индексом) на базах, поднятых до перехода на логин по имени
+// пользователя. На новых базах колонки email не существует, и функция ничего
+// не делает — CREATE TABLE ниже сразу создаёт таблицу с колонкой username.
+func renameEmailColumnToUsername(db *sql.DB) error {
+	var count int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.COLUMNS
+		 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email'`,
+	).Scan(&count)
+	if err != nil || count == 0 {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE users CHANGE COLUMN email username VARCHAR(255) NOT NULL`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE users DROP INDEX uniq_users_email, ADD UNIQUE KEY uniq_users_username (username)`); err != nil {
+		return err
+	}
+	return nil
+}
+
+// renameDataURLColumnToURL переименовывает item_images.data_url в url на
+// базах, поднятых до перехода на файловое хранилище фотографий (см.
+// imagestore.go) — раньше в этой колонке лежал целиком data:-URL, теперь
+// только ссылка на файл. На новых базах колонки data_url не существует, и
+// функция ничего не делает — CREATE TABLE выше сразу создаёт колонку url.
+func renameDataURLColumnToURL(db *sql.DB) error {
+	var count int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.COLUMNS
+		 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'item_images' AND COLUMN_NAME = 'data_url'`,
+	).Scan(&count)
+	if err != nil || count == 0 {
+		return err
+	}
+	_, err = db.Exec(`ALTER TABLE item_images CHANGE COLUMN data_url url MEDIUMTEXT NOT NULL`)
+	return err
+}
+
+// seedDemoUser создаёт демо-пользователя (demo / demo1234),
 // если таблица users ещё пуста — чтобы сразу было чем войти.
 func seedDemoUser(db *sql.DB) error {
 	var count int
@@ -165,13 +219,13 @@ func seedDemoUser(db *sql.DB) error {
 		return nil
 	}
 
-	hash, err := hashPassword("demo1234")
+	hash, err := hashPassword("pass")
 	if err != nil {
 		return err
 	}
 	_, err = db.Exec(
-		`INSERT INTO users (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
-		newID("user-"), "Демо Пользователь", "demo@example.com", hash, time.Now().UTC().Format(time.RFC3339),
+		`INSERT INTO users (id, name, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
+		newID("user-"), "Демо Пользователь", "user", hash, time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
 }
