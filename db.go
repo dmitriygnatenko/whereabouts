@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -23,7 +24,7 @@ var identifierRE = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 // dsn возвращает строку подключения к конкретной базе данных.
 func (c dbConfig) dsn() string {
 	return fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=UTC&timeout=5s",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=UTC&time_zone=%%27%%2B00%%3A00%%27&timeout=5s",
 		c.User, c.Password, c.Host, c.Port, c.Name,
 	)
 }
@@ -87,77 +88,57 @@ func openDB(cfg dbConfig) (*sql.DB, error) {
 // чтобы не зависеть от версии MariaDB, где "IF NOT EXISTS" для индексов
 // поддерживается не везде.
 func migrate(db *sql.DB) error {
-	if err := renameEmailColumnToUsername(db); err != nil {
-		return fmt.Errorf("миграция email -> username: %w", err)
-	}
-	if err := renameDataURLColumnToURL(db); err != nil {
-		return fmt.Errorf("миграция data_url -> url: %w", err)
-	}
-
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS users (
-			id            VARCHAR(64) NOT NULL PRIMARY KEY,
-			name          VARCHAR(255) NOT NULL,
+			id            INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			username      VARCHAR(255) NOT NULL,
 			password_hash VARCHAR(255) NOT NULL,
-			language      VARCHAR(8) NOT NULL DEFAULT 'en',
-			location_filter_depth INT NOT NULL DEFAULT 0,
-			created_at    VARCHAR(40) NOT NULL,
+			settings      JSON NOT NULL CHECK(JSON_VALID(settings)),
+			created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			UNIQUE KEY uniq_users_username (username)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
-		// Для баз, созданных до появления колонки language — добавляем её отдельно
-		// (IF NOT EXISTS поддерживается MariaDB/MySQL 8+, идемпотентно при рестартах).
-		`ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(8) NOT NULL DEFAULT 'en';`,
-
-		// location_filter_depth — сколько уровней вложенности мест показывать
-		// в чипах-фильтрах на вкладке "Вещи". 0 = без ограничения (показывать все).
-		`ALTER TABLE users ADD COLUMN IF NOT EXISTS location_filter_depth INT NOT NULL DEFAULT 0;`,
-
 		`CREATE TABLE IF NOT EXISTS sessions (
 			token      VARCHAR(64) NOT NULL PRIMARY KEY,
-			user_id    VARCHAR(64) NOT NULL,
-			created_at VARCHAR(40) NOT NULL,
-			expires_at VARCHAR(40) NOT NULL,
+			user_id    INTEGER UNSIGNED NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			KEY idx_sessions_user (user_id),
-			CONSTRAINT fk_sessions_user FOREIGN KEY (user_id)
-				REFERENCES users (id) ON DELETE CASCADE
+			CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
 		`CREATE TABLE IF NOT EXISTS locations (
-			id         VARCHAR(64) NOT NULL PRIMARY KEY,
-			name       VARCHAR(255) NOT NULL,
+			id         INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			title      VARCHAR(255) NOT NULL,
 			color      VARCHAR(16) NOT NULL,
-			parent_id  VARCHAR(64) NULL,
-			created_at VARCHAR(40) NOT NULL,
+			parent_id  INTEGER UNSIGNED NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			KEY idx_locations_parent (parent_id),
-			CONSTRAINT fk_locations_parent FOREIGN KEY (parent_id)
-				REFERENCES locations (id) ON DELETE RESTRICT
+			CONSTRAINT fk_locations_parent FOREIGN KEY (parent_id) REFERENCES locations (id) ON DELETE RESTRICT
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
 		`CREATE TABLE IF NOT EXISTS items (
-			id          VARCHAR(64) NOT NULL PRIMARY KEY,
-			name        VARCHAR(255) NOT NULL,
-			location_id VARCHAR(64) NOT NULL,
+			id          INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			title       VARCHAR(255) NOT NULL,
+			location_id INTEGER UNSIGNED NOT NULL,
 			notes       TEXT NOT NULL,
-			created_at  VARCHAR(40) NOT NULL,
-			updated_at  VARCHAR(40) NOT NULL,
+			created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			KEY idx_items_location (location_id),
 			KEY idx_items_updated (updated_at),
-			CONSTRAINT fk_items_location FOREIGN KEY (location_id)
-				REFERENCES locations (id) ON DELETE RESTRICT
+			CONSTRAINT fk_items_location FOREIGN KEY (location_id) REFERENCES locations (id) ON DELETE RESTRICT
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
 		// url — ссылка на файл фотографии (см. imagestore.go), не сами байты:
 		// файлы лежат на диске в web/files, в БД только путь к ним.
 		`CREATE TABLE IF NOT EXISTS item_images (
-			id       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			item_id  VARCHAR(64) NOT NULL,
-			url      MEDIUMTEXT NOT NULL,
-			position INT NOT NULL DEFAULT 0,
+			id          INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			item_id  INTEGER UNSIGNED NOT NULL,
+			url      VARCHAR(255) NOT NULL,
+			position INTEGER NOT NULL DEFAULT 0,
 			KEY idx_item_images_item (item_id),
-			CONSTRAINT fk_item_images_item FOREIGN KEY (item_id)
-				REFERENCES items (id) ON DELETE CASCADE
+			CONSTRAINT fk_item_images_item FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 	}
 	for _, stmt := range stmts {
@@ -166,46 +147,6 @@ func migrate(db *sql.DB) error {
 		}
 	}
 	return nil
-}
-
-// renameEmailColumnToUsername переименовывает колонку email в username (вместе
-// с её уникальным индексом) на базах, поднятых до перехода на логин по имени
-// пользователя. На новых базах колонки email не существует, и функция ничего
-// не делает — CREATE TABLE ниже сразу создаёт таблицу с колонкой username.
-func renameEmailColumnToUsername(db *sql.DB) error {
-	var count int
-	err := db.QueryRow(
-		`SELECT COUNT(*) FROM information_schema.COLUMNS
-		 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email'`,
-	).Scan(&count)
-	if err != nil || count == 0 {
-		return err
-	}
-	if _, err := db.Exec(`ALTER TABLE users CHANGE COLUMN email username VARCHAR(255) NOT NULL`); err != nil {
-		return err
-	}
-	if _, err := db.Exec(`ALTER TABLE users DROP INDEX uniq_users_email, ADD UNIQUE KEY uniq_users_username (username)`); err != nil {
-		return err
-	}
-	return nil
-}
-
-// renameDataURLColumnToURL переименовывает item_images.data_url в url на
-// базах, поднятых до перехода на файловое хранилище фотографий (см.
-// imagestore.go) — раньше в этой колонке лежал целиком data:-URL, теперь
-// только ссылка на файл. На новых базах колонки data_url не существует, и
-// функция ничего не делает — CREATE TABLE выше сразу создаёт колонку url.
-func renameDataURLColumnToURL(db *sql.DB) error {
-	var count int
-	err := db.QueryRow(
-		`SELECT COUNT(*) FROM information_schema.COLUMNS
-		 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'item_images' AND COLUMN_NAME = 'data_url'`,
-	).Scan(&count)
-	if err != nil || count == 0 {
-		return err
-	}
-	_, err = db.Exec(`ALTER TABLE item_images CHANGE COLUMN data_url url MEDIUMTEXT NOT NULL`)
-	return err
 }
 
 // seedDemoUser создаёт демо-пользователя (demo / demo1234),
@@ -223,75 +164,13 @@ func seedDemoUser(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(
-		`INSERT INTO users (id, name, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
-		newID("user-"), "Демо Пользователь", "user", hash, time.Now().UTC().Format(time.RFC3339),
-	)
-	return err
-}
-
-// seedIfEmpty наполняет пустую базу демо-данными, чтобы приложение сразу
-// было с чем показать — та же иерархия мест и вещей, что раньше жила
-// в мок-бэкенде фронтенда.
-func seedIfEmpty(db *sql.DB) error {
-	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM locations`).Scan(&count); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
-	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
-	ago := func(days int) string { return now.AddDate(0, 0, -days).Format(time.RFC3339) }
-	strPtr := func(s string) *string { return &s }
-
-	tx, err := db.Begin()
+	settings, err := json.Marshal(defaultUserSettings())
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
-	locations := []Location{
-		{ID: "loc-hall", Name: "Прихожая", Color: "#3D6B63", ParentID: nil},
-		{ID: "loc-kitchen", Name: "Кухня", Color: "#D98E2B", ParentID: nil},
-		{ID: "loc-bedroom", Name: "Спальня", Color: "#8E5A9E", ParentID: nil},
-		{ID: "loc-storage", Name: "Кладовая", Color: "#B5453A", ParentID: nil},
-		{ID: "loc-storage-top", Name: "Верхняя полка", Color: "#B5453A", ParentID: strPtr("loc-storage")},
-		{ID: "loc-garage", Name: "Гараж", Color: "#4A6FA5", ParentID: nil},
-		{ID: "loc-garage-shelf", Name: "Полка 2", Color: "#4A6FA5", ParentID: strPtr("loc-garage")},
-		{ID: "loc-garage-box", Name: "Коробка с проводами", Color: "#4A6FA5", ParentID: strPtr("loc-garage-shelf")},
-	}
-	for _, l := range locations {
-		if _, err := tx.Exec(
-			`INSERT INTO locations (id, name, color, parent_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-			l.ID, l.Name, l.Color, l.ParentID, nowStr,
-		); err != nil {
-			return err
-		}
-	}
-
-	type seedItem struct {
-		id, name, locationID, notes string
-		updatedAt                   string
-	}
-	items := []seedItem{
-		{newID(""), "Паспорт", "loc-hall", "В верхнем ящике комода, синяя папка", ago(1)},
-		{newID(""), "Зарядка для ноутбука", "loc-bedroom", "В тумбе у кровати", ago(3)},
-		{newID(""), "Зимние шины", "loc-garage-shelf", "", ago(40)},
-		{newID(""), "Изолента", "loc-garage-box", "Синяя и чёрная катушки", ago(12)},
-		{newID(""), "Аптечка", "loc-storage-top", "Справа, рядом с фонариком", ago(7)},
-		{newID(""), "Запасные ключи", "loc-kitchen", "Крючок у холодильника", ago(0)},
-	}
-	for _, it := range items {
-		if _, err := tx.Exec(
-			`INSERT INTO items (id, name, location_id, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			it.id, it.name, it.locationID, it.notes, it.updatedAt, it.updatedAt,
-		); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+	_, err = db.Exec(
+		`INSERT INTO users (username, password_hash, settings) VALUES (?, ?, ?)`,
+		"user", hash, settings,
+	)
+	return err
 }

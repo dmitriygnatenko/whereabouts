@@ -1,23 +1,28 @@
 package main
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // ---------- утилиты ----------
 
-func newID(prefix string) string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return prefix + hex.EncodeToString(b)
+// parseIDParam разбирает числовой id из пути запроса (например {id} у
+// /api/items/{id}), пишет 400 и возвращает ok=false, если он не похож
+// на положительное целое.
+func parseIDParam(w http.ResponseWriter, r *http.Request) (id int64, ok bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "Invalid id")
+		return 0, false
+	}
+	return id, true
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -117,8 +122,8 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // loadImages подтягивает фотографии для набора вещей одним запросом,
 // чтобы не делать N+1 обращений к БД при выдаче списка.
-func (s *server) loadImages(itemIDs []string) (map[string][]string, error) {
-	result := make(map[string][]string, len(itemIDs))
+func (s *server) loadImages(itemIDs []int64) (map[int64][]string, error) {
+	result := make(map[int64][]string, len(itemIDs))
 	if len(itemIDs) == 0 {
 		return result, nil
 	}
@@ -140,7 +145,8 @@ func (s *server) loadImages(itemIDs []string) (map[string][]string, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var itemID, url string
+		var itemID int64
+		var url string
 		if err := rows.Scan(&itemID, &url); err != nil {
 			return nil, err
 		}
@@ -152,7 +158,7 @@ func (s *server) loadImages(itemIDs []string) (map[string][]string, error) {
 // imageURLsForItem returns the currently stored photo URLs for one item —
 // used before replacing/deleting an item's photos so orphaned files on disk
 // can be cleaned up afterwards.
-func (s *server) imageURLsForItem(itemID string) ([]string, error) {
+func (s *server) imageURLsForItem(itemID int64) ([]string, error) {
 	rows, err := s.db.Query(`SELECT url FROM item_images WHERE item_id = ?`, itemID)
 	if err != nil {
 		return nil, err
@@ -172,7 +178,7 @@ func (s *server) imageURLsForItem(itemID string) ([]string, error) {
 
 func (s *server) handleListItems(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.Query(
-		`SELECT id, name, location_id, notes, updated_at FROM items ORDER BY updated_at DESC`,
+		`SELECT id, title, location_id, notes, updated_at FROM items ORDER BY updated_at DESC`,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to load items")
@@ -181,7 +187,7 @@ func (s *server) handleListItems(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var items []Item
-	var ids []string
+	var ids []int64
 	for rows.Next() {
 		var it Item
 		if err := rows.Scan(&it.ID, &it.Name, &it.LocationID, &it.Notes, &it.UpdatedAt); err != nil {
@@ -214,15 +220,15 @@ func (s *server) handleListItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (s *server) getItemByID(id string) (*Item, error) {
+func (s *server) getItemByID(id int64) (*Item, error) {
 	var it Item
 	err := s.db.QueryRow(
-		`SELECT id, name, location_id, notes, updated_at FROM items WHERE id = ?`, id,
+		`SELECT id, title, location_id, notes, updated_at FROM items WHERE id = ?`, id,
 	).Scan(&it.ID, &it.Name, &it.LocationID, &it.Notes, &it.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
-	imagesByItem, err := s.loadImages([]string{id})
+	imagesByItem, err := s.loadImages([]int64{id})
 	if err != nil {
 		return nil, err
 	}
@@ -238,13 +244,13 @@ func validateItemInput(in itemInput) map[string]string {
 	if strings.TrimSpace(in.Name) == "" {
 		errs["name"] = "Enter the item name"
 	}
-	if strings.TrimSpace(in.LocationID) == "" {
+	if in.LocationID <= 0 {
 		errs["locationId"] = "Choose a location"
 	}
 	return errs
 }
 
-func (s *server) locationExists(id string) (bool, error) {
+func (s *server) locationExists(id int64) (bool, error) {
 	var exists int
 	err := s.db.QueryRow(`SELECT 1 FROM locations WHERE id = ?`, id).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -259,7 +265,7 @@ func (s *server) locationExists(id string) (bool, error) {
 // replaceItemImages swaps an item's photo rows for the given list of URLs,
 // then deletes the files of any old photo that isn't in the new list — e.g.
 // the user removed it from the item, or replaced it with a new upload.
-func (s *server) replaceItemImages(itemID string, images []string) error {
+func (s *server) replaceItemImages(itemID int64, images []string) error {
 	oldURLs, err := s.imageURLsForItem(itemID)
 	if err != nil {
 		return err
@@ -314,13 +320,18 @@ func (s *server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := newID("")
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
 
-	if _, err := s.db.Exec(
-		`INSERT INTO items (id, name, location_id, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, strings.TrimSpace(in.Name), in.LocationID, strings.TrimSpace(in.Notes), now, now,
-	); err != nil {
+	res, err := s.db.Exec(
+		`INSERT INTO items (title, location_id, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		strings.TrimSpace(in.Name), in.LocationID, strings.TrimSpace(in.Notes), now, now,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save item")
+		return
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save item")
 		return
 	}
@@ -338,7 +349,10 @@ func (s *server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
 
 	var in itemInput
 	if err := decodeJSONLimited(w, r, &in); err != nil {
@@ -364,9 +378,9 @@ func (s *server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
 	res, err := s.db.Exec(
-		`UPDATE items SET name = ?, location_id = ?, notes = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE items SET title = ?, location_id = ?, notes = ?, updated_at = ? WHERE id = ?`,
 		strings.TrimSpace(in.Name), in.LocationID, strings.TrimSpace(in.Notes), now, id,
 	)
 	if err != nil {
@@ -391,7 +405,10 @@ func (s *server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
 	// Best-effort: read the photo URLs before the DB delete (item_images rows
 	// cascade-delete with the item) so we can also remove their files on disk.
 	urls, _ := s.imageURLsForItem(id)
@@ -414,7 +431,7 @@ func (s *server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 // ---------- места ----------
 
 func (s *server) handleListLocations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id, name, color, parent_id FROM locations ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT id, title, color, parent_id FROM locations ORDER BY created_at`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to load locations")
 		return
@@ -456,7 +473,7 @@ func (s *server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 		color = "#3D6B63"
 	}
 
-	if in.ParentID != nil && strings.TrimSpace(*in.ParentID) != "" {
+	if in.ParentID != nil && *in.ParentID > 0 {
 		exists, err := s.locationExists(*in.ParentID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Failed to verify parent location")
@@ -470,12 +487,17 @@ func (s *server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 		in.ParentID = nil
 	}
 
-	id := newID("loc-")
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := s.db.Exec(
-		`INSERT INTO locations (id, name, color, parent_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-		id, name, color, in.ParentID, now,
-	); err != nil {
+	now := time.Now().UTC()
+	res, err := s.db.Exec(
+		`INSERT INTO locations (title, color, parent_id, created_at) VALUES (?, ?, ?, ?)`,
+		name, color, in.ParentID, now,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save location")
+		return
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save location")
 		return
 	}
@@ -484,7 +506,10 @@ func (s *server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
 
 	var childCount int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM locations WHERE parent_id = ?`, id).Scan(&childCount); err != nil {
