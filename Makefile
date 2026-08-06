@@ -1,38 +1,47 @@
-.PHONY: help docker-up docker-down docker-restart docker-logs docker-ps run build tidy fmt vet test
+.PHONY: help docker-up docker-down docker-restart docker-logs docker-ps run build tidy fmt vet lint install-deps test
 
 BINARY := build/app/whereabouts
 
-help: ## Показать список команд
+BIN_DIR := bin
+GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
+
+help: ## Show list of commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-docker-up: ## Поднять докер (MariaDB) в фоне
+install-deps: ## Fetch the latest golangci-lint into ./bin (re-run any time to upgrade it)
+	GOBIN=$(CURDIR)/$(BIN_DIR) go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+docker-up: ## Start docker (MariaDB) in background
 	docker compose up -d
 
-docker-down: ## Остановить и удалить контейнеры докера
+docker-down: ## Stop and remove docker containers
 	docker compose down
 
-docker-restart: docker-down docker-up ## Перезапустить докер
+docker-restart: docker-down docker-up ## Restart docker
 
-docker-logs: ## Логи докер-контейнеров
+docker-logs: ## Docker container logs
 	docker compose logs -f
 
-docker-ps: ## Статус контейнеров
+docker-ps: ## Container status
 	docker compose ps
 
-run: ## Запустить приложение (go run .)
-	go run .
+run: ## Run the application (go run ./cmd/whereabouts)
+	go run ./cmd/whereabouts
 
-build: ## Собрать бинарник для Linux (amd64) в build/app/whereabouts
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(BINARY) .
+build: ## Build binary for Linux (amd64) into build/app/whereabouts
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(BINARY) ./cmd/whereabouts
 
-tidy: ## Подтянуть/почистить зависимости
+tidy: ## Tidy up dependencies
 	go mod tidy
 
-fmt: ## Форматировать код
+fmt: ## Format code
 	go fmt ./...
 
-vet: ## Статический анализ
+vet: ## Static analysis
 	go vet ./...
+
+lint: $(GOLANGCI_LINT) ## Run golangci-lint from ./bin (fetched via install-deps on first use)
+	$(GOLANGCI_LINT) run ./...
 
 test:
 	@go test ./...

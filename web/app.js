@@ -11,9 +11,9 @@ createApp({
   data() {
     return {
       // ---- Session / auth ----
-      // Before login: cached locale from a previous session on this browser,
-      // falling back to the browser's own language. After login: the user's
-      // saved preference from the database (see applyServerLanguage).
+      // Before login: cached locale from a previous session on this browser, falling back to the
+      // browser's own language. After login: the user's saved preference from the database (see
+      // applyServerLanguage).
       locale: getStoredLocale() || apiLocale,
       currentUser: null,
       authChecking: true, // true until the initial /auth/me check resolves
@@ -71,10 +71,9 @@ createApp({
     };
   },
   computed: {
-    // Wordmark shown in the sidebar, topbar and auth card. Russian and
-    // Spanish use a two-word pair joined by an accent-coloured middle dot
-    // ("ГДЕ · ЧТО"); German and English are a single phrase with no dot.
-    // Returned as parts so the template can colour the separator.
+    // Wordmark shown in the sidebar, topbar and auth card. Russian and Spanish use a two-word pair
+    // joined by an accent-coloured middle dot ("ГДЕ · ЧТО"); German and English are a single phrase
+    // with no dot. Returned as parts so the template can colour the separator.
     brandWordmark() {
       const wordmarks = {
         ru: ['ГДЕ', 'ЧТО'],
@@ -98,8 +97,8 @@ createApp({
         return matchesLocation && matchesQuery;
       }).sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     },
-    // Flat list of locations in depth-first order, with nesting depth.
-    // Used in selects and filter chips — always fully expanded.
+    // Flat list of locations in depth-first order, with nesting depth. Used in selects and filter
+    // chips — always fully expanded.
     locationOptionsFlat() {
       const result = [];
       const walk = (parentId, depth) => {
@@ -113,8 +112,8 @@ createApp({
       walk(null, 0);
       return result;
     },
-    // Same as locationOptionsFlat, but capped to the user's configured nesting
-    // depth for the filter chips on the Items tab (0 = no cap, show all).
+    // Same as locationOptionsFlat, but capped to the user's configured nesting depth for the filter
+    // chips on the Items tab (0 = no cap, show all).
     locationFilterChips() {
       const depth = this.currentUser ? this.currentUser.locationFilterDepth : 0;
       if (!depth) return this.locationOptionsFlat;
@@ -138,8 +137,8 @@ createApp({
   },
   async mounted() {
     onUnauthorized(() => {
-      // Session expired or was revoked (e.g. in another tab) — send the user
-      // back to the login screen.
+      // Session expired or was revoked (e.g. in another tab) — send the user back to the login
+      // screen.
       this.currentUser = null;
     });
 
@@ -163,9 +162,8 @@ createApp({
     deleteLocationTarget() { this.syncBodyScrollLock(); },
     editLocationTarget() { this.syncBodyScrollLock(); },
     'lightbox.open'() { this.syncBodyScrollLock(); },
-    // Keep everything that lives outside the Vue tree in sync with the
-    // active locale: the API client's own error messages, <html lang> and
-    // the document title.
+    // Keep everything that lives outside the Vue tree in sync with the active locale: the API
+    // client's own error messages, <html lang> and the document title.
     locale: {
       immediate: true,
       handler(val) {
@@ -183,10 +181,9 @@ createApp({
     plural(n, key) {
       return pluralize(this.locale, n, key);
     },
-    // Applies a language reported by the backend. A supported value becomes
-    // the active locale and is cached in localStorage; an empty/unsupported
-    // one (e.g. a brand-new account) falls back to the local cache or the
-    // browser's own language instead.
+    // Applies a language reported by the backend. A supported value becomes the active locale and
+    // is cached in localStorage; an empty/unsupported one (e.g. a brand-new account) falls back to
+    // the local cache or the browser's own language instead.
     applyServerLanguage(lang) {
       if (ALL_LOCALES.includes(lang)) {
         this.locale = lang;
@@ -234,8 +231,8 @@ createApp({
       }
     },
     // ---------- Data loading ----------
-    // Items and locations are always loaded together: almost every item view
-    // needs its location's name and colour to render.
+    // Items and locations are always loaded together: almost every item view needs its location's
+    // name and colour to render.
     async loadData() {
       this.loadingItems = true;
       this.loadError = '';
@@ -286,9 +283,9 @@ createApp({
       const path = this.locationPath(id);
       return path.length ? path.map(l => l.name).join(' › ') : this.t('No location');
     },
-    // Is `id` an ancestor of the currently active filter chip? Used to
-    // highlight the parent chain when a nested location is selected, since
-    // the ›/›› depth markers alone don't say *whose* child a chip is.
+    // Is `id` an ancestor of the currently active filter chip? Used to highlight the parent chain
+    // when a nested location is selected, since the ›/›› depth markers alone don't say *whose*
+    // child a chip is.
     isAncestorOfActive(id) {
       if (!this.activeLocation || id === this.activeLocation) return false;
       return this.locationPath(this.activeLocation).some(l => l.id === id);
@@ -305,8 +302,8 @@ createApp({
     toggleCollapse(id) {
       this.collapsed[id] = !this.collapsed[id];
     },
-    // Pre-selects this location as the parent in the "new location" form
-    // below the tree, then focuses the name field so it's ready to type into.
+    // Pre-selects this location as the parent in the "new location" form below the tree, then
+    // focuses the name field so it's ready to type into.
     startSubLocation(loc) {
       this.newLocationParentId = loc.id;
       this.$nextTick(() => this.$refs.newLocationInput?.focus());
@@ -374,14 +371,14 @@ createApp({
       this.currentUser = null;
       this.items = [];
       this.locations = [];
-      // Back to the login screen — reuse the cached locale if we have one,
-      // otherwise fall back to the browser's language again.
+      // Back to the login screen — reuse the cached locale if we have one, otherwise fall back to
+      // the browser's language again.
       this.locale = getStoredLocale() || detectBrowserLocale();
     },
 
     // ---------- Profile tab ----------
-    // Opening the tab re-seeds both forms, so a half-filled edit (or a stale
-    // error) from a previous visit never carries over.
+    // Opening the tab re-seeds both forms, so a half-filled edit (or a stale error) from a previous
+    // visit never carries over.
     openProfile() {
       this.tab = 'profile';
       this.usernameForm = { username: this.currentUser.username, currentPassword: '' };
@@ -447,10 +444,9 @@ createApp({
       this.showItemSheet = true;
       this.$nextTick(() => this.$refs.nameInput?.focus());
     },
-    // form.images is a copy, so cancelling the sheet leaves the original item
-    // untouched. Existing photos come back from the API as "/files/…" links;
-    // newly picked ones are data: URLs until saveItem sends them — the backend
-    // tells the two apart and only writes the new ones to disk.
+    // form.images is a copy, so cancelling the sheet leaves the original item untouched. Existing
+    // photos come back from the API as "/files/…" links; newly picked ones are data: URLs until
+    // saveItem sends them — the backend tells the two apart and only writes the new ones to disk.
     openEditItem(it) {
       this.editingId = it.id;
       this.form = { name: it.name, locationId: it.locationId, notes: it.notes || '', images: [...(it.images || [])] };
@@ -458,9 +454,9 @@ createApp({
       this.showItemSheet = true;
     },
 
-    // Photos are downscaled in the browser before upload purely to keep the
-    // request small; the server re-checks and compresses again (see images.go),
-    // so this is an optimization, not the size limit.
+    // Photos are downscaled in the browser before upload purely to keep the request small; the
+    // server re-checks and compresses again (see images.go), so this is an optimization, not the
+    // size limit.
     async onFilesSelected(e) {
       const files = Array.from(e.target.files || []);
       e.target.value = ''; // let the same file be picked again after removing it
@@ -478,8 +474,7 @@ createApp({
         this.uploadingImages = false;
       }
     },
-    // Draws the picked file onto a canvas at a capped size and re-encodes it
-    // as a JPEG data URL.
+    // Draws the picked file onto a canvas at a capped size and re-encodes it as a JPEG data URL.
     resizeImage(file, maxDim) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -528,9 +523,9 @@ createApp({
       this.formErrors = errs;
       return Object.keys(errs).length === 0;
     },
-    // The server answers with the saved record (photo data URLs already
-    // replaced by their stored "/files/…" links), so the local list is
-    // patched with the response rather than the form's own values.
+    // The server answers with the saved record (photo data URLs already replaced by their stored
+    // "/files/…" links), so the local list is patched with the response rather than the form's own
+    // values.
     async saveItem() {
       if (!this.validateForm()) return;
       this.saving = true;
@@ -608,9 +603,8 @@ createApp({
       }
     },
     askDeleteLocation(loc) { this.deleteLocationTarget = loc; },
-    // A location is only removable once it's empty. The dialog already
-    // disables the button in that case; this re-check guards the method
-    // itself, and the backend rejects it too.
+    // A location is only removable once it's empty. The dialog already disables the button in that
+    // case; this re-check guards the method itself, and the backend rejects it too.
     async confirmDeleteLocation() {
       const target = this.deleteLocationTarget;
       if (this.hasChildLocations(target.id) || this.directCountFor(target.id) > 0) return;
