@@ -1,10 +1,10 @@
-# Где·Что — бэкенд (Go + MariaDB/PostgreSQL/SQLite)
+# Где·Что — бэкенд (Go + MySQL/PostgreSQL/SQLite)
 
 Бэкенд на чистой стандартной библиотеке Go (`net/http`, Go 1.26+) плюс
 драйверы БД. Поддерживает три СУБД, выбираются переменной окружения
 `DB_DRIVER`:
 
-- `mariadb` (по умолчанию) — через `github.com/go-sql-driver/mysql`, работает
+- `mysql` (по умолчанию) — через `github.com/go-sql-driver/mysql`, работает
   и с MySQL, и с MariaDB;
 - `postgres` — через `github.com/jackc/pgx/v5/stdlib`;
 - `sqlite` — через `modernc.org/sqlite` (чистый Go, без cgo), файл БД на
@@ -16,21 +16,72 @@ CORS-плясок.
 
 ## Структура
 
+Бэкенд собран по гексагональной архитектуре (порты и адаптеры) с
+явными юзкейсами — бизнес-логика ничего не знает про HTTP или конкретную
+СУБД, только про интерфейсы (`internal/port`), которые под неё подставляют
+адаптеры.
+
 ```
-backend/
-  go.mod
-  main.go       — точка входа: конфиг, роуты, встраивание фронтенда
-  db.go         — подключение к БД (mariadb/postgres/sqlite), миграции, демо-сид
-  models.go     — структуры Item / Location
-  handlers.go   — HTTP-хендлеры (CRUD)
-  web/
-    index.html  — фронтенд (встраивается в бинарник через go:embed)
+go.mod
+webassets.go              — go:embed фронтенда (лежит в корне: go:embed не
+                             умеет смотреть за пределы своей директории)
+cmd/whereabouts/
+  main.go                 — composition root: выбирает адаптер БД по
+                             DB_DRIVER, собирает остальные адаптеры,
+                             юзкейсы, HTTP-роуты и запускает сервер
+  db.go, middleware.go, seed.go
+internal/
+  domain/
+    entity/                 — сущности (Item, Location, User, Session)
+    error/                  — типизированные ошибки (Validation/NotFound/…)
+    usecase/
+      item/, location/, auth/, user/
+                             — юзкейсы: один интерактор (Execute) на
+                             сценарий
+    service/
+      passwordhasher/, tokengenerator/, imageprocessor/
+                             — доменные сервисы: bcrypt, случайные токены
+                             сессий, сжатие фото (чистая логика, без
+                             внешнего состояния кроме stdlib/crypto)
+  port/                    — интерфейсы, от которых зависят юзкейсы:
+                             репозитории, PasswordHasher, ImageStore и т.д.
+  repository/              — реализации портов-репозиториев, по пакету на
+                             сущность; SQL здесь нет, только вызовы storage,
+                             конвертация моделей в сущности и перевод
+                             sql.ErrNoRows в NotFoundError (а нарушения
+                             UNIQUE — в ConflictError). Каждый пакет сам
+                             объявляет интерфейс Storage — ровно те операции
+                             БД, которые вызывает именно он; сходятся они
+                             только в композиционном корне (app/db.go)
+    item/, location/, session/, user/
+  storage/
+    error/                   — sentinel UniqueViolationError: у нарушения
+                             UNIQUE нет портируемого представления, поэтому
+                             каждый драйвер приводит своё к нему, а
+                             репозиторий переводит его в ConflictError
+                             (у sql.ErrNoRows аналог не нужен — он
+                             стандартный)
+    model/                   — DB-модели (форма строк таблиц), отдельные от
+                             domain/entity; колонки с разным представлением
+                             у драйверов (settings JSON, TIMESTAMP) умеют
+                             сканироваться сами
+  adapter/
+    httpapi/                 — driving-адаптер: net/http хендлеры и роуты
+    sqlite/, mysql/, postgres/
+                             — по одному driven-адаптеру на драйвер БД:
+                             Config, Migrate и Storage — вся работа с БД,
+                             каждый на своём диалекте ("?" против "$1",
+                             LastInsertId против RETURNING, JSON_SET против
+                             jsonb_set)
+    filesystem/              — файлы фото на диске
+web/
+  index.html                — фронтенд (встраивается в бинарник через go:embed)
 ```
 
 ## Требования
 
 - Go 1.26 или новее
-- Для `DB_DRIVER=mariadb` (по умолчанию) — запущенный сервер MariaDB/MySQL,
+- Для `DB_DRIVER=mysql` — запущенный сервер MySQL/MariaDB,
   пользователь с правами `CREATE DATABASE` (или база, созданная заранее)
 - Для `DB_DRIVER=postgres` — запущенный сервер PostgreSQL, пользователь с
   правами на создание базы (или база, созданная заранее)
@@ -39,17 +90,24 @@ backend/
 
 ## Переменные окружения
 
-| Переменная       | По умолчанию          | Описание                          |
+У конфигурации БД нет значений по умолчанию: `DB_DRIVER` и всё, что нужно
+выбранному драйверу, обязательны и проверяются при старте — при пропуске
+сервер сразу завершится с понятной ошибкой, а не молча подключится не туда.
+
+| Переменная       | Обязательна          | Описание                          |
 |------------------|------------------------|------------------------------------|
-| `DB_DRIVER`      | `mariadb`              | `mariadb`, `postgres` или `sqlite` |
-| `DB_HOST`        | `127.0.0.1`            | Хост БД (mariadb/postgres)         |
-| `DB_PORT`        | `3306` / `5432`        | Порт БД (mariadb/postgres); по умолчанию зависит от `DB_DRIVER` |
-| `DB_USER`        | `root`                 | Пользователь (mariadb/postgres)    |
-| `DB_PASSWORD`    | (пусто)                | Пароль (mariadb/postgres)          |
-| `DB_NAME`        | `wherewhat`            | Имя базы (mariadb/postgres), создастся сама, если её нет |
-| `DB_SQLITE_PATH` | `./data/wherewhat.db`  | Путь к файлу БД (sqlite)           |
-| `PORT`           | `8080`                 | Порт, на котором слушает сам сервер |
-| `COOKIE_SECURE`  | `false`                | `true` — кука сессии только по HTTPS (включите в проде) |
+| `DB_DRIVER`      | да                     | `mysql`, `postgres` или `sqlite`   |
+| `DB_HOST`        | для mysql/postgres     | Хост БД                            |
+| `DB_PORT`        | для mysql/postgres     | Порт БД (обычно `3306` для MySQL, `5432` для Postgres) |
+| `DB_USER`        | для mysql/postgres     | Пользователь                       |
+| `DB_PASSWORD`    | нет (пусто)            | Пароль (mysql/postgres)            |
+| `DB_NAME`        | для mysql/postgres     | Имя базы, создастся сама, если её нет |
+| `DB_SQLITE_PATH` | для sqlite             | Путь к файлу БД                    |
+| `DB_MAX_OPEN_CONNS` | нет (`10`)          | Макс. открытых соединений (игнорируется для sqlite — всегда 1) |
+| `DB_MAX_IDLE_CONNS` | нет (`5`)           | Макс. простаивающих соединений (игнорируется для sqlite) |
+| `DB_CONN_MAX_LIFETIME` | нет (`5m`)       | Макс. время жизни соединения (формат `time.ParseDuration`, напр. `30s`) |
+| `PORT`           | нет (`8080`)           | Порт, на котором слушает сам сервер |
+| `COOKIE_SECURE`  | нет (`false`)          | `true` — кука сессии только по HTTPS (включите в проде) |
 
 ## Запуск локально
 
@@ -59,8 +117,8 @@ cd backend
 # Подтянуть зависимости (нужен интернет один раз, дальше кешируется)
 go mod tidy
 
-# Вариант 1 — MariaDB/MySQL (по умолчанию):
-export DB_DRIVER=mariadb
+# Вариант 1 — MySQL/MariaDB:
+export DB_DRIVER=mysql
 export DB_HOST=127.0.0.1
 export DB_PORT=3306
 export DB_USER=root
@@ -79,39 +137,34 @@ export DB_NAME=wherewhat
 export DB_DRIVER=sqlite
 export DB_SQLITE_PATH=./data/wherewhat.db
 
-go run .
+go run ./cmd/whereabouts
 ```
 
 При первом запуске сервер сам создаст базу (если у пользователя есть права
-и это mariadb/postgres — для sqlite файл создаётся всегда), создаст таблицы
+и это mysql/postgres — для sqlite файл создаётся всегда), создаст таблицы
 и наполнит их демо-данными. Откройте `http://localhost:8080` — там сразу
 открывается интерфейс приложения.
 
 Если прав на создание базы нет — создайте её заранее вручную:
 
 ```sql
--- MariaDB/MySQL:
+-- MySQL/MariaDB:
 CREATE DATABASE wherewhat CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- PostgreSQL:
 CREATE DATABASE wherewhat;
 ```
 
-Локальные контейнеры БД для разработки — через `docker-compose.yml`:
+Локальный контейнер MariaDB для разработки — через `docker-compose.yml`:
 
 ```bash
-# MariaDB (по умолчанию):
 docker-compose up -d
-
-# PostgreSQL (сервис под профилем, не стартует по умолчанию):
-docker-compose --profile postgres up -d postgres
 ```
 
 ## Сборка бинарника
 
 ```bash
-cd backend
-go build -o wherewhat .
+go build -o wherewhat ./cmd/whereabouts
 ./wherewhat
 ```
 
@@ -167,7 +220,7 @@ go build -o wherewhat .
 Фронтенд уже уменьшает фото перед отправкой (canvas, до 1000px), но бэкенд
 не полагается на это и сжимает самостоятельно — на случай прямых запросов
 к API или изображений, которые всё равно оказались большими. Логика в
-`images.go`:
+`internal/domain/service/imageprocessor/compressor.go`:
 
 - Если фото уже компактное (≤ 350 КБ и формат JPEG) — не трогаем.
 - Иначе декодируем (JPEG/PNG/GIF из стандартной библиотеки), уменьшаем

@@ -5,11 +5,14 @@
    ========================================================================= */
 const API_BASE = '/api';
 
-// Called on a 401 from any request — e.g. the session expired in another
-// tab. The app subscribes to this in mounted() (see app.js).
+// Called on a 401 from any request — e.g. the session expired in another tab. The app subscribes to
+// this in mounted() (see app.js).
 let unauthorizedHandler = null;
+// onUnauthorized registers fn as the handler invoked whenever a request comes back with a 401.
 function onUnauthorized(fn) { unauthorizedHandler = fn; }
 
+// handleResponse parses a fetch Response into JSON, firing the unauthorizedHandler on a 401 and
+// throwing a localized Error for any other non-OK status.
 async function handleResponse(res) {
   if (res.status === 204) return null;
   let data = null;
@@ -24,6 +27,8 @@ async function handleResponse(res) {
   return data;
 }
 
+// apiFetch issues a same-origin request against the backend (sending the httpOnly session cookie)
+// and returns its parsed JSON body.
 async function apiFetch(path, options) {
   let res;
   try {

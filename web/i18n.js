@@ -8,17 +8,17 @@
    right language shows up before the backend has answered.
    ========================================================================= */
 
-// English is handled by the fallback path (see translate below), so it isn't
-// listed here — this is the set of locales that have their own tables.
-// Keep in sync with supportedLanguages in auth.go.
+// English is handled by the fallback path (see translate below), so it isn't listed here — this is
+// the set of locales that have their own tables. Keep in sync with supportedLanguages in auth.go.
 const SUPPORTED_LOCALES = ['ru', 'de', 'es', 'fr'];
 
-// Every language code an account can actually be saved with, including
-// English. Use this (not SUPPORTED_LOCALES) when validating a language value
-// that came from the server or localStorage — SUPPORTED_LOCALES on its own
-// would treat a legitimate 'en' as unrecognized.
+// Every language code an account can actually be saved with, including English. Use this (not
+// SUPPORTED_LOCALES) when validating a language value that came from the server or localStorage —
+// SUPPORTED_LOCALES on its own would treat a legitimate 'en' as unrecognized.
 const ALL_LOCALES = ['en', ...SUPPORTED_LOCALES];
 
+// detectBrowserLocale picks the first of navigator.languages that matches a supported locale,
+// falling back to English.
 function detectBrowserLocale() {
   const langs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || ''];
   for (const l of langs) {
@@ -29,10 +29,9 @@ function detectBrowserLocale() {
   return 'en';
 }
 
-// Local cache of the backend-confirmed language, keyed per browser. Written
-// every time the server hands back a user with a language on it (login,
-// explicit change); read only to guess the locale before the backend has
-// answered (e.g. the login screen, or while /auth/me is in flight).
+// Local cache of the backend-confirmed language, keyed per browser. Written every time the server
+// hands back a user with a language on it (login, explicit change); read only to guess the locale
+// before the backend has answered (e.g. the login screen, or while /auth/me is in flight).
 const LOCALE_STORAGE_KEY = 'whereabouts.locale';
 function getStoredLocale() {
   try {
@@ -46,9 +45,9 @@ function setStoredLocale(locale) {
   try { localStorage.setItem(LOCALE_STORAGE_KEY, locale); } catch (e) { /* ignore */ }
 }
 
-// English is the default language, so English strings are written directly
-// at each call site (e.g. t('Add item')) and used as-is when locale is 'en'.
-// These tables only need to hold the translation for each string.
+// English is the default language, so English strings are written directly at each call site (e.g.
+// t('Add item')) and used as-is when locale is 'en'. These tables only need to hold the translation
+// for each string.
 const TRANSLATIONS = {
   ru: {
     'Whereabouts — item tracker': 'Где что — учёт вещей',
@@ -144,7 +143,6 @@ const TRANSLATIONS = {
     'Location deleted': 'Место удалено',
     'Error: ': 'Ошибка: ',
 
-    'Data is stored on the server (Go + MariaDB)': 'Данные хранятся на сервере (Go + MariaDB)',
     'No location': 'Без места',
 
     'just now': 'только что',
@@ -247,7 +245,6 @@ const TRANSLATIONS = {
     'Location deleted': 'Ort gelöscht',
     'Error: ': 'Fehler: ',
 
-    'Data is stored on the server (Go + MariaDB)': 'Daten werden auf dem Server gespeichert (Go + MariaDB)',
     'No location': 'Kein Ort',
 
     'just now': 'gerade eben',
@@ -350,7 +347,6 @@ const TRANSLATIONS = {
     'Location deleted': 'Ubicación eliminada',
     'Error: ': 'Error: ',
 
-    'Data is stored on the server (Go + MariaDB)': 'Los datos se guardan en el servidor (Go + MariaDB)',
     'No location': 'Sin ubicación',
 
     'just now': 'justo ahora',
@@ -453,7 +449,6 @@ const TRANSLATIONS = {
     'Location deleted': 'Emplacement supprimé',
     'Error: ': 'Erreur : ',
 
-    'Data is stored on the server (Go + MariaDB)': 'Les données sont stockées sur le serveur (Go + MariaDB)',
     'No location': 'Sans emplacement',
 
     'just now': "à l'instant",
@@ -506,9 +501,9 @@ const PLURALS = {
   },
 };
 
-// Russian needs three plural forms (1 / 2-4 / 5+, with exceptions for 11-14).
-// French takes the singular for 0 as well as 1 ("0 objet"), unlike English,
-// German and Spanish, which only single out 1.
+// Russian needs three plural forms (1 / 2-4 / 5+, with exceptions for 11-14). French takes the
+// singular for 0 as well as 1 ("0 objet"), unlike English, German and Spanish, which only single
+// out 1.
 function pluralize(locale, n, key) {
   const forms = PLURALS[locale][key];
   if (locale === 'ru') {
@@ -521,8 +516,8 @@ function pluralize(locale, n, key) {
   return n === 1 ? forms[0] : forms[1];
 }
 
-// `text` is the English source string — used directly as both the lookup
-// key and the English fallback, so English never needs its own table.
+// `text` is the English source string — used directly as both the lookup key and the English
+// fallback, so English never needs its own table.
 function translate(locale, text, params) {
   const table = TRANSLATIONS[locale];
   let s = table ? (table[text] ?? text) : text;
@@ -534,10 +529,9 @@ function translate(locale, text, params) {
   return s;
 }
 
-// Relative-time phrases ("5 minutes ago") don't share word order across
-// languages — Russian puts the "ago" word after the number like English
-// does, but German, Spanish and French put their equivalent before it
-// ("vor 5 Minuten", "hace 5 minutos", "il y a 5 minutes") — so this is a
+// Relative-time phrases ("5 minutes ago") don't share word order across languages — Russian puts
+// the "ago" word after the number like English does, but German, Spanish and French put their
+// equivalent before it ("vor 5 Minuten", "hace 5 minutos", "il y a 5 minutes") — so this is a
 // template per locale rather than a single translatable suffix word.
 const AGO_TEMPLATES = {
   en: (n, unit) => `${n} ${unit} ago`,
@@ -550,15 +544,15 @@ function formatAgo(locale, n, unit) {
   return (AGO_TEMPLATES[locale] || AGO_TEMPLATES.en)(n, unit);
 }
 
-// Locale used by the API client to localize its own error messages (network
-// unavailable, unexpected status, etc). The Vue app keeps this in sync with
-// its own `locale` state via setApiLocale() — see app.js.
+// Locale used by the API client to localize its own error messages (network unavailable, unexpected
+// status, etc). The Vue app keeps this in sync with its own `locale` state via setApiLocale() — see
+// app.js.
 let apiLocale = detectBrowserLocale();
 function setApiLocale(locale) { apiLocale = locale; }
 
-// The backend always replies in English (see handlers.go/auth.go) — a full
-// server-side i18n layer would be overkill for a dozen-and-a-half strings,
-// so known messages are translated here by exact match, per locale.
+// The backend always replies in English (see handlers.go/auth.go) — a full server-side i18n layer
+// would be overkill for a dozen-and-a-half strings, so known messages are translated here by exact
+// match, per locale.
 const SERVER_ERRORS = {
   ru: {
     'Authentication required': 'Необходима авторизация',
@@ -762,8 +756,8 @@ const SERVER_ERRORS = {
   },
 };
 
-// Regex-based translations for compound messages with a dynamic suffix,
-// per locale (see localizeServerMessage below).
+// Regex-based translations for compound messages with a dynamic suffix, per locale (see
+// localizeServerMessage below).
 const SERVER_ERROR_PATTERNS = {
   ru: [
     { re: /^Invalid request body: request too large \(max (\d+) MB\)$/,
@@ -791,10 +785,9 @@ const SERVER_ERROR_PATTERNS = {
   ],
 };
 
-// Translates a backend error message into the current locale. Compound
-// messages ("Invalid request body: ...", "photo #N: failed to process
-// (...)") are translated piecewise, recursively; anything unrecognized
-// (including messages with a dynamic, unpredictable suffix) is left as-is.
+// Translates a backend error message into the current locale. Compound messages ("Invalid request
+// body: ...", "photo #N: failed to process (...)") are translated piecewise, recursively; anything
+// unrecognized (including messages with a dynamic, unpredictable suffix) is left as-is.
 function localizeServerMessage(locale, message) {
   const table = SERVER_ERRORS[locale];
   if (!table || !message) return message;

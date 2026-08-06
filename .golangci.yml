@@ -1,0 +1,75 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dogsled
+    - dupl
+    - errcheck
+    - errorlint
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - staticcheck
+    - testifylint
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+    - wsl
+
+linters-settings:
+  errcheck:
+    # Best-effort cleanup calls (os.Remove, rows.Close, Close on a
+    # response body, ...) are deliberately unchecked throughout this
+    # codebase — see the comments at each call site.
+    exclude-functions:
+      - (*database/sql.Rows).Close
+      - (io.Closer).Close
+
+  revive:
+    rules:
+      - name: unused-parameter
+        disabled: true
+
+  gosec:
+    excludes:
+      # G404 (weak RNG): only used for cache-busting/non-security randomness,
+      # never for tokens or secrets — see internal/domain/service/tokengenerator
+      # for the one place that needs a CSPRNG, which already uses crypto/rand.
+      - G404
+      # G115 (int -> uint conversion overflow): flags every
+      # uint64(res.LastInsertId()) in the driver adapters — database/sql's
+      # LastInsertId is int64-typed with no portable alternative, and an
+      # auto-increment id is never negative in practice.
+      - G115
+
+  goconst:
+    min-len: 3
+    min-occurrences: 5
+
+issues:
+
+  exclude-rules:
+    # internal/domain/error deliberately names its package "error", shadowing
+    # the predeclared type — documented at the top of errors.go as the
+    # reason every importer must alias it to domainerror.
+    - path: internal/domain/error/errors\.go
+      linters:
+        - predeclared
+
