@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -22,17 +23,42 @@ type ctxKey string
 
 const userContextKey ctxKey = "currentUser"
 
-// PublicUser — то, что отдаём наружу в JSON. Хеш пароля сюда никогда не попадает.
-type PublicUser struct {
-	ID                  string `json:"id"`
-	Name                string `json:"name"`
-	Username            string `json:"username"`
+// UserSettings — пользовательские настройки, хранятся в колонке users.settings
+// одним JSON-полем вместо отдельных колонок.
+type UserSettings struct {
 	Language            string `json:"language"`
 	LocationFilterDepth int    `json:"locationFilterDepth"`
 }
 
+// defaultUserSettings — настройки нового пользователя.
+func defaultUserSettings() UserSettings {
+	return UserSettings{Language: "en", LocationFilterDepth: 0}
+}
+
+// scanUserSettings разбирает JSON из колонки users.settings; пустое значение
+// (старые/битые строки) откатывается на настройки по умолчанию.
+func scanUserSettings(raw []byte) (UserSettings, error) {
+	settings := defaultUserSettings()
+	if len(raw) == 0 {
+		return settings, nil
+	}
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		return UserSettings{}, err
+	}
+	return settings, nil
+}
+
+// PublicUser — то, что отдаём наружу в JSON. Хеш пароля сюда никогда не попадает.
+// UserSettings встроена анонимно, чтобы её поля (language, locationFilterDepth)
+// разворачивались в JSON-ответе на верхнем уровне — так фронтенд как читал
+// currentUser.language напрямую, так и продолжает.
+type PublicUser struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	UserSettings
+}
+
 type registerInput struct {
-	Name     string `json:"name"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -102,7 +128,7 @@ func checkPassword(hash, password string) bool {
 // ---------- сессии ----------
 
 // createSession создаёт запись сессии в БД и выставляет httpOnly-куку.
-func (s *server) createSession(w http.ResponseWriter, userID string) error {
+func (s *server) createSession(w http.ResponseWriter, userID int64) error {
 	token, err := newToken()
 	if err != nil {
 		return err
@@ -112,7 +138,7 @@ func (s *server) createSession(w http.ResponseWriter, userID string) error {
 
 	if _, err := s.db.Exec(
 		`INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
-		token, userID, now.Format(time.RFC3339), expires.Format(time.RFC3339),
+		token, userID, now, expires,
 	); err != nil {
 		return err
 	}
@@ -154,16 +180,20 @@ func (s *server) userFromSession(r *http.Request) (*PublicUser, error) {
 	}
 
 	var user PublicUser
+	var settingsRaw []byte
 	var expiresAt string
 	err = s.db.QueryRow(
-		`SELECT u.id, u.name, u.username, u.language, u.location_filter_depth, s.expires_at
+		`SELECT u.id, u.username, u.settings, s.expires_at
 		 FROM sessions s
 		 JOIN users u ON u.id = s.user_id
 		 WHERE s.token = ?`,
 		cookie.Value,
-	).Scan(&user.ID, &user.Name, &user.Username, &user.Language, &user.LocationFilterDepth, &expiresAt)
+	).Scan(&user.ID, &user.Username, &settingsRaw, &expiresAt)
 	if err != nil {
 		return nil, errors.New("session not found")
+	}
+	if user.UserSettings, err = scanUserSettings(settingsRaw); err != nil {
+		return nil, err
 	}
 
 	if expiresAt < time.Now().UTC().Format(time.RFC3339) {
@@ -195,10 +225,6 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		name = "Unnamed"
-	}
 	username := normalizeUsername(in.Username)
 	if username == "" {
 		writeError(w, http.StatusUnprocessableEntity, "Please enter a username")
@@ -219,12 +245,16 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := newID("user-")
-	now := time.Now().UTC().Format(time.RFC3339)
-	// language не передаётся при регистрации — используется дефолт колонки ('en').
-	_, err = s.db.Exec(
-		`INSERT INTO users (id, name, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`,
-		id, name, username, hash, now,
+	settings := defaultUserSettings()
+	settingsJSON, err := json.Marshal(settings)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to process settings")
+		return
+	}
+
+	res, err := s.db.Exec(
+		`INSERT INTO users (username, password_hash, settings) VALUES (?, ?, ?)`,
+		username, hash, settingsJSON,
 	)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
@@ -235,12 +265,17 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to create user")
 		return
 	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to create user")
+		return
+	}
 
 	if err := s.createSession(w, id); err != nil {
 		writeError(w, http.StatusInternalServerError, "User created, but failed to start a session")
 		return
 	}
-	writeJSON(w, http.StatusCreated, PublicUser{ID: id, Name: name, Username: username, Language: "en"})
+	writeJSON(w, http.StatusCreated, PublicUser{ID: id, Username: username, UserSettings: settings})
 }
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -252,12 +287,17 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	username := normalizeUsername(in.Username)
 
 	var user PublicUser
+	var settingsRaw []byte
 	var hash string
 	err := s.db.QueryRow(
-		`SELECT id, name, username, language, location_filter_depth, password_hash FROM users WHERE username = ?`, username,
-	).Scan(&user.ID, &user.Name, &user.Username, &user.Language, &user.LocationFilterDepth, &hash)
+		`SELECT id, username, settings, password_hash FROM users WHERE username = ?`, username,
+	).Scan(&user.ID, &user.Username, &settingsRaw, &hash)
 	if err != nil || !checkPassword(hash, in.Password) {
 		writeError(w, http.StatusUnauthorized, "Incorrect username or password")
+		return
+	}
+	if user.UserSettings, err = scanUserSettings(settingsRaw); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to read user settings")
 		return
 	}
 
@@ -302,7 +342,10 @@ func (s *server) handleUpdateLanguage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.db.Exec(`UPDATE users SET language = ? WHERE id = ?`, lang, user.ID); err != nil {
+	if _, err := s.db.Exec(
+		`UPDATE users SET settings = JSON_SET(settings, '$.language', ?) WHERE id = ?`,
+		lang, user.ID,
+	); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save language preference")
 		return
 	}
@@ -329,7 +372,10 @@ func (s *server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if _, err := s.db.Exec(`UPDATE users SET location_filter_depth = ? WHERE id = ?`, in.LocationFilterDepth, user.ID); err != nil {
+	if _, err := s.db.Exec(
+		`UPDATE users SET settings = JSON_SET(settings, '$.locationFilterDepth', ?) WHERE id = ?`,
+		in.LocationFilterDepth, user.ID,
+	); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save location filter depth")
 		return
 	}
@@ -340,7 +386,7 @@ func (s *server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.
 // checkCurrentPassword re-fetches the user's password hash and verifies it
 // against the given plaintext — used before letting the profile page change
 // the username or password, since the session cookie alone shouldn't be enough.
-func (s *server) checkCurrentPassword(userID, password string) (bool, error) {
+func (s *server) checkCurrentPassword(userID int64, password string) (bool, error) {
 	var hash string
 	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&hash); err != nil {
 		return false, err

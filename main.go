@@ -75,6 +75,11 @@ func withLogging(next http.Handler) http.Handler {
 }
 
 func main() {
+	// Часовой пояс приложения по умолчанию — UTC: все time.Now() без явного
+	// .UTC() (логи, таймауты и т.п.) и соединение с БД (см. dsn() в db.go)
+	// работают в одном часовом поясе независимо от часового пояса хоста.
+	time.Local = time.UTC
+
 	loadEnvFile()
 	cfg := loadDBConfig()
 
@@ -95,12 +100,6 @@ func main() {
 	}
 	if err := ensureFilesDir(); err != nil {
 		log.Fatalf("не удалось создать каталог для файлов фотографий: %v", err)
-	}
-	if err := migrateBase64ImagesToFiles(db); err != nil {
-		log.Printf("предупреждение: не удалось перенести старые фото в файлы: %v", err)
-	}
-	if err := seedIfEmpty(db); err != nil {
-		log.Fatalf("не удалось наполнить базу демо-данными: %v", err)
 	}
 	if err := seedDemoUser(db); err != nil {
 		log.Fatalf("не удалось создать демо-пользователя: %v", err)
