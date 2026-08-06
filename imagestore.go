@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -74,7 +73,7 @@ func randomFileName(ext string) (string, error) {
 // на файловое хранилище (когда item_images.url ещё хранил целиком data:-URL),
 // в файлы на диске и переписывает ссылку в БД. На новых записях эта функция
 // ничего не делает — они уже создаются как ссылки на файлы.
-func migrateBase64ImagesToFiles(db *sql.DB) error {
+func migrateBase64ImagesToFiles(db *appDB) error {
 	rows, err := db.Query(`SELECT id, url FROM item_images WHERE url LIKE 'data:%'`)
 	if err != nil {
 		return err

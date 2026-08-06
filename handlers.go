@@ -83,7 +83,7 @@ func (s *server) processImages(images []string) ([]string, error) {
 // server держит зависимость от БД, чтобы обработчикам не нужно было
 // тащить *sql.DB через глобальные переменные.
 type server struct {
-	db           *sql.DB
+	db           *appDB
 	cookieSecure bool
 }
 
@@ -323,15 +323,10 @@ func (s *server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 
-	res, err := s.db.Exec(
+	id, err := s.db.insertReturningID(
 		`INSERT INTO items (title, location_id, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		strings.TrimSpace(in.Name), in.LocationID, strings.TrimSpace(in.Notes), now, now,
 	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to save item")
-		return
-	}
-	id, err := res.LastInsertId()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save item")
 		return
@@ -489,15 +484,10 @@ func (s *server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	res, err := s.db.Exec(
+	id, err := s.db.insertReturningID(
 		`INSERT INTO locations (title, color, parent_id, created_at) VALUES (?, ?, ?, ?)`,
 		name, color, in.ParentID, now,
 	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to save location")
-		return
-	}
-	id, err := res.LastInsertId()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save location")
 		return
