@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -258,21 +257,15 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.db.Exec(
+	id, err := s.db.insertReturningID(
 		`INSERT INTO users (username, password_hash, settings) VALUES (?, ?, ?)`,
 		username, hash, settingsJSON,
 	)
 	if err != nil {
-		var mysqlErr *mysql.MySQLError
-		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "A user with this username is already registered")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Failed to create user")
-		return
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to create user")
 		return
 	}
@@ -388,10 +381,11 @@ func (s *server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if _, err := s.db.Exec(
-		`UPDATE users SET settings = JSON_SET(settings, '$.locationFilterDepth', ?) WHERE id = ?`,
-		in.LocationFilterDepth, user.ID,
-	); err != nil {
+	query := `UPDATE users SET settings = JSON_SET(settings, '$.locationFilterDepth', ?) WHERE id = ?`
+	if s.db.driver == driverPostgres {
+		query = `UPDATE users SET settings = jsonb_set(settings, '{locationFilterDepth}', to_jsonb(?::int)) WHERE id = ?`
+	}
+	if _, err := s.db.Exec(query, in.LocationFilterDepth, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save location filter depth")
 		return
 	}
@@ -401,10 +395,11 @@ func (s *server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.
 
 // saveUserLanguage persists the interface language to the settings JSON column.
 func (s *server) saveUserLanguage(userID int64, lang string) error {
-	_, err := s.db.Exec(
-		`UPDATE users SET settings = JSON_SET(settings, '$.language', ?) WHERE id = ?`,
-		lang, userID,
-	)
+	query := `UPDATE users SET settings = JSON_SET(settings, '$.language', ?) WHERE id = ?`
+	if s.db.driver == driverPostgres {
+		query = `UPDATE users SET settings = jsonb_set(settings, '{language}', to_jsonb(?::text)) WHERE id = ?`
+	}
+	_, err := s.db.Exec(query, lang, userID)
 	return err
 }
 
@@ -462,8 +457,7 @@ func (s *server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := s.db.Exec(`UPDATE users SET username = ? WHERE id = ?`, username, user.ID); err != nil {
-		var mysqlErr *mysql.MySQLError
-		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "A user with this username is already registered")
 			return
 		}

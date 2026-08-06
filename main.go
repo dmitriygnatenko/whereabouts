@@ -11,7 +11,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
-//go:embed web/*
+// Явный список файлов вместо "web/*" — web/files/ туда намеренно не входит:
+// это runtime-каталог для загруженных фото (см. imagestore.go), он отдаётся
+// напрямую с диска через отдельный маршрут "/files/" (см. registerRoutes),
+// а не из вшитого в бинарник снапшота. Если бы мы embed'или его целиком,
+// сборка ломалась бы в момент, когда в этом каталоге на диске нет ни одного
+// файла (go:embed не умеет embed'ить пустую директорию).
+//
+//go:embed web/index.html web/styles.css web/api.js web/i18n.js web/app.js
+//go:embed web/favicon.ico web/favicon.svg web/apple-touch-icon.png
 var webFiles embed.FS
 
 // loadEnvFile populates process env vars from a local .env file, if present —
@@ -32,13 +40,32 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
+// defaultPortForDriver — порт по умолчанию для DB_PORT, если он не задан
+// явно: у Postgres и MariaDB он разный, а угадать он неважно для SQLite.
+func defaultPortForDriver(driver string) string {
+	if driver == driverPostgres {
+		return "5432"
+	}
+	return "3306"
+}
+
 func loadDBConfig() dbConfig {
+	driver := getenv("DB_DRIVER", driverMariaDB)
 	return dbConfig{
-		Host:     getenv("DB_HOST", "127.0.0.1"),
-		Port:     getenv("DB_PORT", "3306"),
-		User:     getenv("DB_USER", "root"),
-		Password: getenv("DB_PASSWORD", ""),
-		Name:     getenv("DB_NAME", "wherewhat"),
+		Driver:     driver,
+		Host:       getenv("DB_HOST", "127.0.0.1"),
+		Port:       getenv("DB_PORT", defaultPortForDriver(driver)),
+		User:       getenv("DB_USER", "root"),
+		Password:   getenv("DB_PASSWORD", ""),
+		Name:       getenv("DB_NAME", "wherewhat"),
+		SQLitePath: getenv("DB_SQLITE_PATH", "./data/wherewhat.db"),
+	}
+}
+
+func loadDemoUserConfig() demoUserConfig {
+	return demoUserConfig{
+		Username: getenv("DEMO_USERNAME", "user"),
+		Password: getenv("DEMO_PASSWORD", "pass"),
 	}
 }
 
@@ -83,7 +110,11 @@ func main() {
 	loadEnvFile()
 	cfg := loadDBConfig()
 
-	log.Printf("проверяю базу данных %q на %s:%s...", cfg.Name, cfg.Host, cfg.Port)
+	if cfg.Driver == driverSQLite {
+		log.Printf("использую SQLite (%s)...", cfg.SQLitePath)
+	} else {
+		log.Printf("проверяю базу данных %q на %s:%s (%s)...", cfg.Name, cfg.Host, cfg.Port, cfg.Driver)
+	}
 	if err := ensureDatabase(cfg); err != nil {
 		log.Printf("предупреждение: не удалось автоматически создать базу данных: %v", err)
 		log.Printf("если база %q уже существует — можно игнорировать это сообщение", cfg.Name)
@@ -91,7 +122,7 @@ func main() {
 
 	db, err := openDB(cfg)
 	if err != nil {
-		log.Fatalf("не удалось подключиться к MariaDB: %v", err)
+		log.Fatalf("не удалось подключиться к БД: %v", err)
 	}
 	defer db.Close()
 
@@ -101,7 +132,7 @@ func main() {
 	if err := ensureFilesDir(); err != nil {
 		log.Fatalf("не удалось создать каталог для файлов фотографий: %v", err)
 	}
-	if err := seedDemoUser(db); err != nil {
+	if err := seedDemoUser(db, loadDemoUserConfig()); err != nil {
 		log.Fatalf("не удалось создать демо-пользователя: %v", err)
 	}
 	log.Println("база данных готова")
