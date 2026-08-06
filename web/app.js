@@ -11,7 +11,10 @@ createApp({
   data() {
     return {
       // ---- Session / auth ----
-      locale: apiLocale, // before login: browser language; after login: the user's saved preference
+      // Before login: cached locale from a previous session on this browser,
+      // falling back to the browser's own language. After login: the user's
+      // saved preference from the database (see applyServerLanguage).
+      locale: getStoredLocale() || apiLocale,
       currentUser: null,
       authChecking: true, // true until the initial /auth/me check resolves
       authForm: { username: '', password: '' },
@@ -137,7 +140,7 @@ createApp({
 
     try {
       this.currentUser = await authApi.me();
-      this.locale = SUPPORTED_LOCALES.includes(this.currentUser.language) ? this.currentUser.language : 'en';
+      this.applyServerLanguage(this.currentUser.language);
     } catch (e) {
       // Not authenticated — this is a normal state, just show the login screen.
     } finally {
@@ -174,6 +177,18 @@ createApp({
     plural(n, key) {
       return pluralize(this.locale, n, key);
     },
+    // Applies a language reported by the backend. A supported value becomes
+    // the active locale and is cached in localStorage; an empty/unsupported
+    // one (e.g. a brand-new account) falls back to the local cache or the
+    // browser's own language instead.
+    applyServerLanguage(lang) {
+      if (ALL_LOCALES.includes(lang)) {
+        this.locale = lang;
+        setStoredLocale(lang);
+      } else {
+        this.locale = getStoredLocale() || detectBrowserLocale();
+      }
+    },
     async setLanguage(lang) {
       if (lang === this.locale || !this.currentUser) return;
       const previous = this.locale;
@@ -181,6 +196,7 @@ createApp({
       try {
         const updated = await userApi.updateLanguage(lang);
         this.currentUser = updated;
+        this.applyServerLanguage(updated.language);
       } catch (e) {
         this.locale = previous;
         this.showToast(this.t('Error: ') + e.message);
@@ -332,9 +348,9 @@ createApp({
 
       this.authLoading = true;
       try {
-        const user = await authApi.login({ username, password });
+        const user = await authApi.login({ username, password, language: this.locale });
         this.currentUser = user;
-        this.locale = SUPPORTED_LOCALES.includes(user.language) ? user.language : 'en';
+        this.applyServerLanguage(user.language);
         this.authForm = { username: '', password: '' };
         await this.loadData();
       } catch (e) {
@@ -352,8 +368,9 @@ createApp({
       this.currentUser = null;
       this.items = [];
       this.locations = [];
-      // Back to the login screen — locale is detected from the browser again there.
-      this.locale = detectBrowserLocale();
+      // Back to the login screen — reuse the cached locale if we have one,
+      // otherwise fall back to the browser's language again.
+      this.locale = getStoredLocale() || detectBrowserLocale();
     },
 
     // ---------- Profile tab ----------

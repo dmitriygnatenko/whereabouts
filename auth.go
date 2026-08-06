@@ -26,13 +26,15 @@ const userContextKey ctxKey = "currentUser"
 // UserSettings — пользовательские настройки, хранятся в колонке users.settings
 // одним JSON-полем вместо отдельных колонок.
 type UserSettings struct {
-	Language            string `json:"language"`
-	LocationFilterDepth int    `json:"locationFilterDepth"`
+	Language            string `json:"language,omitempty"`
+	LocationFilterDepth int    `json:"locationFilterDepth,omitempty"`
 }
 
-// defaultUserSettings — настройки нового пользователя.
+// defaultUserSettings — настройки нового пользователя. Язык оставляем пустым:
+// он проставится при первом успешном логине из языка, который передаёт фронтенд
+// (см. handleLogin), а не жёстко захардкожен на английский.
 func defaultUserSettings() UserSettings {
-	return UserSettings{Language: "en", LocationFilterDepth: 0}
+	return UserSettings{Language: "", LocationFilterDepth: 0}
 }
 
 // scanUserSettings разбирает JSON из колонки users.settings; пустое значение
@@ -66,6 +68,10 @@ type registerInput struct {
 type loginInput struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// Language — язык интерфейса фронтенда на момент логина (детект по
+	// браузеру или ранее сохранённое в localStorage значение). Используется
+	// только чтобы проставить язык пользователю, если он ещё не задан.
+	Language string `json:"language"`
 }
 
 type updateLanguageInput struct {
@@ -301,6 +307,19 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// First login without a saved language yet — adopt whatever the frontend
+	// detected (browser locale or its own cached value) and persist it, so
+	// subsequent sessions on any device start in that language.
+	if user.Language == "" {
+		if lang := strings.ToLower(strings.TrimSpace(in.Language)); supportedLanguages[lang] {
+			if err := s.saveUserLanguage(user.ID, lang); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save language preference")
+				return
+			}
+			user.Language = lang
+		}
+	}
+
 	if err := s.createSession(w, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to start a session")
 		return
@@ -342,10 +361,7 @@ func (s *server) handleUpdateLanguage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.db.Exec(
-		`UPDATE users SET settings = JSON_SET(settings, '$.language', ?) WHERE id = ?`,
-		lang, user.ID,
-	); err != nil {
+	if err := s.saveUserLanguage(user.ID, lang); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save language preference")
 		return
 	}
@@ -381,6 +397,15 @@ func (s *server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.
 	}
 	user.LocationFilterDepth = in.LocationFilterDepth
 	writeJSON(w, http.StatusOK, user)
+}
+
+// saveUserLanguage persists the interface language to the settings JSON column.
+func (s *server) saveUserLanguage(userID int64, lang string) error {
+	_, err := s.db.Exec(
+		`UPDATE users SET settings = JSON_SET(settings, '$.language', ?) WHERE id = ?`,
+		lang, userID,
+	)
+	return err
 }
 
 // checkCurrentPassword re-fetches the user's password hash and verifies it
