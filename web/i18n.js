@@ -1,14 +1,23 @@
 /* =========================================================================
    I18N — English, Russian, German, Spanish and French
-   Login screen: locale is detected from the browser (falls back to English).
+   Login screen: locale is the last one cached in localStorage (see
+   getStoredLocale below), falling back to the browser's language.
    After login: locale comes from the user's language preference stored in
-   the database (see PublicUser.language in auth.go).
+   the database (see PublicUser.language in auth.go) — the database is the
+   source of truth across devices; localStorage is just a local cache so the
+   right language shows up before the backend has answered.
    ========================================================================= */
 
 // English is handled by the fallback path (see translate below), so it isn't
 // listed here — this is the set of locales that have their own tables.
 // Keep in sync with supportedLanguages in auth.go.
 const SUPPORTED_LOCALES = ['ru', 'de', 'es', 'fr'];
+
+// Every language code an account can actually be saved with, including
+// English. Use this (not SUPPORTED_LOCALES) when validating a language value
+// that came from the server or localStorage — SUPPORTED_LOCALES on its own
+// would treat a legitimate 'en' as unrecognized.
+const ALL_LOCALES = ['en', ...SUPPORTED_LOCALES];
 
 function detectBrowserLocale() {
   const langs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || ''];
@@ -18,6 +27,23 @@ function detectBrowserLocale() {
     if (match) return match;
   }
   return 'en';
+}
+
+// Local cache of the backend-confirmed language, keyed per browser. Written
+// every time the server hands back a user with a language on it (login,
+// explicit change); read only to guess the locale before the backend has
+// answered (e.g. the login screen, or while /auth/me is in flight).
+const LOCALE_STORAGE_KEY = 'whereabouts.locale';
+function getStoredLocale() {
+  try {
+    const val = localStorage.getItem(LOCALE_STORAGE_KEY);
+    return ALL_LOCALES.includes(val) ? val : null;
+  } catch (e) {
+    return null; // private browsing / storage disabled
+  }
+}
+function setStoredLocale(locale) {
+  try { localStorage.setItem(LOCALE_STORAGE_KEY, locale); } catch (e) { /* ignore */ }
 }
 
 // English is the default language, so English strings are written directly

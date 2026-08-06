@@ -69,8 +69,8 @@ const api = {
    reads or stores it directly, just relies on credentials: 'same-origin'.
    ========================================================================= */
 const authApi = {
-  async login({ username, password }) {
-    return apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+  async login({ username, password, language }) {
+    return apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ username, password, language }) });
   },
   async logout() {
     return apiFetch('/auth/logout', { method: 'POST' });
