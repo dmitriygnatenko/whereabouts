@@ -107,6 +107,7 @@ func registerRoutes(mux *http.ServeMux, s *server) {
 
 	mux.HandleFunc("GET /api/locations", s.requireAuth(s.handleListLocations))
 	mux.HandleFunc("POST /api/locations", s.requireAuth(s.handleCreateLocation))
+	mux.HandleFunc("PUT /api/locations/{id}", s.requireAuth(s.handleUpdateLocation))
 	mux.HandleFunc("DELETE /api/locations/{id}", s.requireAuth(s.handleDeleteLocation))
 
 	// Item photo files — stored on disk (see imagestore.go), item_images.url
@@ -503,6 +504,46 @@ func (s *server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, Location{ID: id, Name: name, Color: color, ParentID: in.ParentID})
+}
+
+func (s *server) handleUpdateLocation(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	var in locationInput
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		writeError(w, http.StatusUnprocessableEntity, "Please enter a location name")
+		return
+	}
+	color := strings.TrimSpace(in.Color)
+	if color == "" {
+		color = "#3D6B63"
+	}
+
+	res, err := s.db.Exec(`UPDATE locations SET title = ?, color = ? WHERE id = ?`, name, color, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update location")
+		return
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		writeError(w, http.StatusNotFound, "Location not found")
+		return
+	}
+
+	var parentID *int64
+	if err := s.db.QueryRow(`SELECT parent_id FROM locations WHERE id = ?`, id).Scan(&parentID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Location updated, but failed to read it back")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, Location{ID: id, Name: name, Color: color, ParentID: parentID})
 }
 
 func (s *server) handleDeleteLocation(w http.ResponseWriter, r *http.Request) {

@@ -57,6 +57,9 @@ const api = {
   createLocation(payload) {
     return apiFetch('/locations', { method: 'POST', body: JSON.stringify(payload) });
   },
+  updateLocation(id, payload) {
+    return apiFetch('/locations/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(payload) });
+  },
   deleteLocation(id) {
     return apiFetch('/locations/' + encodeURIComponent(id), { method: 'DELETE' });
   },
