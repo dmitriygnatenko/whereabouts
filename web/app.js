@@ -33,7 +33,7 @@ createApp({
       activeLocation: null, // id of the selected filter chip, null = "All"
 
       // ---- Locations tab ----
-      palette: ['#3D6B63','#D98E2B','#8E5A9E','#B5453A','#4A6FA5','#5C7A29','#A85C8C'],
+      palette: ['#3D6B63','#D98E2B','#8E5A9E','#B5453A','#4A6FA5','#5C7A29','#A85C8C','#3F7D52','#5B4E9E'],
       newLocationName: '',
       newLocationColor: '#3D6B63',
       newLocationParentId: null,
