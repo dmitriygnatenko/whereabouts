@@ -53,6 +53,11 @@ createApp({
       deleteTarget: null,
       deleteLocationTarget: null,
 
+      // ---- Edit location sheet ----
+      editLocationTarget: null, // location being edited, or null
+      editLocationForm: { name: '', color: '#3D6B63' },
+      editLocationSaving: false,
+
       // ---- Profile tab forms ----
       usernameForm: { username: '', currentPassword: '' },
       usernameFormError: '',
@@ -156,6 +161,7 @@ createApp({
     showItemSheet() { this.syncBodyScrollLock(); },
     deleteTarget() { this.syncBodyScrollLock(); },
     deleteLocationTarget() { this.syncBodyScrollLock(); },
+    editLocationTarget() { this.syncBodyScrollLock(); },
     'lightbox.open'() { this.syncBodyScrollLock(); },
     // Keep everything that lives outside the Vue tree in sync with the
     // active locale: the API client's own error messages, <html lang> and
@@ -331,7 +337,7 @@ createApp({
     },
     // On phones, an open bottom sheet/dialog shouldn't let the background scroll underneath it.
     syncBodyScrollLock() {
-      const anyOpen = this.showItemSheet || !!this.deleteTarget || !!this.deleteLocationTarget || this.lightbox.open;
+      const anyOpen = this.showItemSheet || !!this.deleteTarget || !!this.deleteLocationTarget || !!this.editLocationTarget || this.lightbox.open;
       document.body.classList.toggle('modal-open', anyOpen);
     },
 
@@ -575,6 +581,30 @@ createApp({
         this.showToast(this.t('Location added'));
       } catch (e) {
         this.showToast(this.t('Error: ') + e.message);
+      }
+    },
+    // Opens the edit sheet pre-filled with this location's current name/color.
+    openEditLocation(loc) {
+      this.editLocationTarget = loc;
+      this.editLocationForm = { name: loc.name, color: loc.color };
+    },
+    closeEditLocation() {
+      this.editLocationTarget = null;
+    },
+    async saveLocationEdit() {
+      const name = this.editLocationForm.name.trim();
+      if (!name) return;
+      this.editLocationSaving = true;
+      try {
+        const updated = await api.updateLocation(this.editLocationTarget.id, { name, color: this.editLocationForm.color });
+        const idx = this.locations.findIndex(l => l.id === updated.id);
+        if (idx !== -1) this.locations.splice(idx, 1, updated);
+        this.editLocationTarget = null;
+        this.showToast(this.t('Location updated'));
+      } catch (e) {
+        this.showToast(this.t('Error: ') + e.message);
+      } finally {
+        this.editLocationSaving = false;
       }
     },
     askDeleteLocation(loc) { this.deleteLocationTarget = loc; },
