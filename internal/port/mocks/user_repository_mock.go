@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 	entity "wherewhat/internal/domain/entity"
+	port "wherewhat/internal/port"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -57,18 +58,18 @@ func (mr *MockUserRepositoryMockRecorder) Count(ctx any) *gomock.Call {
 }
 
 // Create mocks base method.
-func (m *MockUserRepository) Create(ctx context.Context, username, passwordHash string, settings entity.UserSettings) (uint64, error) {
+func (m *MockUserRepository) Create(ctx context.Context, req port.UserCreateRequest) (uint64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, username, passwordHash, settings)
+	ret := m.ctrl.Call(m, "Create", ctx, req)
 	ret0, _ := ret[0].(uint64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockUserRepositoryMockRecorder) Create(ctx, username, passwordHash, settings any) *gomock.Call {
+func (mr *MockUserRepositoryMockRecorder) Create(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockUserRepository)(nil).Create), ctx, username, passwordHash, settings)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockUserRepository)(nil).Create), ctx, req)
 }
 
 // FindByID mocks base method.

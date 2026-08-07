@@ -12,8 +12,8 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 	entity "wherewhat/internal/domain/entity"
+	port "wherewhat/internal/port"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -58,18 +58,18 @@ func (mr *MockLocationRepositoryMockRecorder) ChildCount(ctx, id any) *gomock.Ca
 }
 
 // Create mocks base method.
-func (m *MockLocationRepository) Create(ctx context.Context, name, color string, parentID *uint64, now time.Time) (entity.Location, error) {
+func (m *MockLocationRepository) Create(ctx context.Context, req port.LocationCreateRequest) (entity.Location, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, name, color, parentID, now)
+	ret := m.ctrl.Call(m, "Create", ctx, req)
 	ret0, _ := ret[0].(entity.Location)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockLocationRepositoryMockRecorder) Create(ctx, name, color, parentID, now any) *gomock.Call {
+func (mr *MockLocationRepositoryMockRecorder) Create(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockLocationRepository)(nil).Create), ctx, name, color, parentID, now)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockLocationRepository)(nil).Create), ctx, req)
 }
 
 // Delete mocks base method.
@@ -133,16 +133,16 @@ func (mr *MockLocationRepositoryMockRecorder) ParentID(ctx, id any) *gomock.Call
 }
 
 // Update mocks base method.
-func (m *MockLocationRepository) Update(ctx context.Context, id uint64, name, color string) (bool, error) {
+func (m *MockLocationRepository) Update(ctx context.Context, req port.LocationUpdateRequest) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, id, name, color)
+	ret := m.ctrl.Call(m, "Update", ctx, req)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockLocationRepositoryMockRecorder) Update(ctx, id, name, color any) *gomock.Call {
+func (mr *MockLocationRepositoryMockRecorder) Update(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockLocationRepository)(nil).Update), ctx, id, name, color)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockLocationRepository)(nil).Update), ctx, req)
 }

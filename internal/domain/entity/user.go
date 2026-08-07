@@ -29,13 +29,23 @@ type PublicUser struct {
 
 // Public strips the password hash, producing the PublicUser safe to hand back to API callers.
 func (u User) Public() PublicUser {
-	return PublicUser{ID: u.ID, Username: u.Username, UserSettings: u.Settings}
+	return PublicUser{
+		ID:           u.ID,
+		Username:     u.Username,
+		UserSettings: u.Settings,
+	}
 }
 
 // SupportedLanguages — interface languages the frontend understands. Keep in sync with
 // SUPPORTED_LOCALES in web/i18n.js ("en" isn't listed there — it's the default the frontend falls
 // back to on its own).
-var SupportedLanguages = map[string]struct{}{"en": {}, "ru": {}, "de": {}, "es": {}, "fr": {}}
+var SupportedLanguages = map[string]struct{}{
+	"en": {},
+	"ru": {},
+	"de": {},
+	"es": {},
+	"fr": {},
+}
 
 // MinUsernameLength is the minimum accepted length for a username.
 const MinUsernameLength = 3

@@ -2,12 +2,17 @@ package config
 
 import (
 	"log/slog"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // logEnv is the full set of variables LoadLog reads.
-var logEnv = []string{"LOG_CONSOLE_LEVEL", "LOG_FILE_PATH", "LOG_FILE_LEVEL"}
+var logEnv = []string{
+	"LOG_CONSOLE_LEVEL",
+	"LOG_FILE_PATH",
+	"LOG_FILE_LEVEL",
+}
 
 // setLogEnv puts the process into a known state for a LoadLog case.
 func setLogEnv(t *testing.T, env map[string]string) {
@@ -38,14 +43,8 @@ func TestLoadLog_Defaults(t *testing.T) {
 	setLogEnv(t, nil)
 
 	cfg, err := LoadLog()
-	if err != nil {
-		t.Fatalf("LoadLog() error = %v, want nil", err)
-	}
-
-	want := withLogDefaults(nil)
-	if cfg != want {
-		t.Errorf("LoadLog() = %+v, want %+v", cfg, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, withLogDefaults(nil), cfg)
 }
 
 // TestLoadLog_Valid covers the spellings a level accepts and, more importantly, that the two
@@ -96,13 +95,8 @@ func TestLoadLog_Valid(t *testing.T) {
 			setLogEnv(t, tt.env)
 
 			cfg, err := LoadLog()
-			if err != nil {
-				t.Fatalf("LoadLog() error = %v, want nil", err)
-			}
-
-			if cfg != tt.want {
-				t.Errorf("LoadLog() = %+v, want %+v", cfg, tt.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg)
 		})
 	}
 }
@@ -114,22 +108,22 @@ func TestLoadLog_Invalid(t *testing.T) {
 		env     map[string]string
 		wantErr string
 	}{
-		"unknown console level": {env: map[string]string{"LOG_CONSOLE_LEVEL": "verbose"}, wantErr: "LOG_CONSOLE_LEVEL"},
-		"unknown file level":    {env: map[string]string{"LOG_FILE_LEVEL": "loud"}, wantErr: "LOG_FILE_LEVEL"},
+		"unknown console level": {
+			env:     map[string]string{"LOG_CONSOLE_LEVEL": "verbose"},
+			wantErr: "LOG_CONSOLE_LEVEL",
+		},
+		"unknown file level": {
+			env:     map[string]string{"LOG_FILE_LEVEL": "loud"},
+			wantErr: "LOG_FILE_LEVEL",
+		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			setLogEnv(t, tt.env)
 
-			cfg, err := LoadLog()
-			if err == nil {
-				t.Fatalf("LoadLog() = %+v, want an error", cfg)
-			}
-
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("LoadLog() error = %q, want it to mention %s", err, tt.wantErr)
-			}
+			_, err := LoadLog()
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }

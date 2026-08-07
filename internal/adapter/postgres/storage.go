@@ -42,7 +42,9 @@ func wrapUnique(err error) error {
 
 // insertReturningID runs an INSERT with a RETURNING id clause — Postgres drivers don't support
 // LastInsertId.
-func (s *Storage) insertReturningID(ctx context.Context, query string, args ...any) (uint64, error) {
+func (s *Storage) insertReturningID(
+	ctx context.Context, query string, args ...any,
+) (uint64, error) {
 	var id uint64
 	err := s.DB.QueryRowContext(ctx, query, args...).Scan(&id)
 

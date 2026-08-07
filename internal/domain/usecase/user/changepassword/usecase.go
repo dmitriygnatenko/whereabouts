@@ -6,46 +6,79 @@ package changepassword
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	domainerror "wherewhat/internal/domain/error"
-	"wherewhat/internal/domain/usecase/user/shared"
-	"wherewhat/internal/domain/usecase/validate"
+	"wherewhat/internal/domain/usecase"
 	"wherewhat/internal/port"
 )
 
 // UseCase implements ChangePassword.
 type UseCase struct {
-	Users  port.UserRepository
-	Hasher port.PasswordHasher
+	userRepository port.UserRepository
+	passwordHasher port.PasswordHasher
 }
 
 // New builds a UseCase from its dependencies.
-func New(users port.UserRepository, hasher port.PasswordHasher) *UseCase {
-	return &UseCase{Users: users, Hasher: hasher}
+func New(
+	userRepository port.UserRepository,
+	passwordHasher port.PasswordHasher,
+) *UseCase {
+	return &UseCase{
+		userRepository: userRepository,
+		passwordHasher: passwordHasher,
+	}
 }
 
 // Execute changes the signed-in user's password, after confirming their current one.
-func (uc *UseCase) Execute(ctx context.Context, in Input) error {
-	if verr := validate.Password(in.NewPassword); verr != nil {
-		return verr
+func (uc *UseCase) Execute(
+	ctx context.Context,
+	input Input,
+) error {
+	if err := input.Validate(); err != nil {
+		slog.InfoContext(ctx, "change password: validation", "error", err)
+
+		return domainerror.ToValidationError(err)
 	}
 
-	ok, err := shared.CheckCurrentPassword(ctx, uc.Users, uc.Hasher, in.User.ID, in.CurrentPassword)
+	ok, err := usecase.CheckCurrentPassword(
+		ctx,
+		usecase.CheckCurrentPasswordRequest{
+			Users:    uc.userRepository,
+			Hasher:   uc.passwordHasher,
+			UserID:   input.User.ID,
+			Password: input.CurrentPassword,
+		},
+	)
 	if err != nil {
+		slog.ErrorContext(ctx, "change password: verify current password", "error", err)
+
 		return errors.New("Failed to verify current password")
 	}
 
 	if !ok {
-		// Forbidden, not unauthorized — see updateusername for why.
-		return &domainerror.ForbiddenError{Message: "Incorrect current password"}
+		slog.InfoContext(
+			ctx,
+			"change password: incorrect current password",
+			"user_id", input.User.ID,
+		)
+
+		// Forbidden, not unauthorized
+		return &domainerror.ForbiddenError{
+			Message: "Incorrect current password",
+		}
 	}
 
-	newHash, err := uc.Hasher.Hash(in.NewPassword)
+	newHash, err := uc.passwordHasher.Hash(input.NewPassword)
 	if err != nil {
+		slog.ErrorContext(ctx, "change password: hash", "error", err)
+
 		return errors.New("Failed to process password")
 	}
 
-	if err := uc.Users.UpdatePasswordHash(ctx, in.User.ID, newHash); err != nil {
+	if err = uc.userRepository.UpdatePasswordHash(ctx, input.User.ID, newHash); err != nil {
+		slog.ErrorContext(ctx, "change password: save", "user_id", input.User.ID, "error", err)
+
 		return errors.New("Failed to update password")
 	}
 

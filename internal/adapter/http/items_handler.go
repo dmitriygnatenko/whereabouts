@@ -3,9 +3,9 @@ package http
 import (
 	"net/http"
 
-	"wherewhat/internal/domain/usecase/item/createitem"
-	"wherewhat/internal/domain/usecase/item/deleteitem"
-	"wherewhat/internal/domain/usecase/item/updateitem"
+	"wherewhat/internal/domain/usecase/item/create"
+	"wherewhat/internal/domain/usecase/item/delete"
+	"wherewhat/internal/domain/usecase/item/update"
 )
 
 type itemRequest struct {
@@ -23,7 +23,7 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	writeJSON(w, http.StatusOK, items.Items)
 }
 
 // handleCreateItem handles POST /api/items.
@@ -34,18 +34,21 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := s.Items.Create.Execute(r.Context(), createitem.Input{
-		Name:       input.Name,
-		LocationID: input.LocationID,
-		Notes:      input.Notes,
-		Images:     input.Images,
-	})
+	created, err := s.Items.Create.Execute(
+		r.Context(),
+		create.Input{
+			Name:       input.Name,
+			LocationID: input.LocationID,
+			Notes:      input.Notes,
+			Images:     input.Images,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, created)
+	writeJSON(w, http.StatusCreated, created.Item)
 }
 
 // handleUpdateItem handles PUT /api/items/{id}.
@@ -61,19 +64,22 @@ func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.Items.Update.Execute(r.Context(), updateitem.Input{
-		ID:         id,
-		Name:       input.Name,
-		LocationID: input.LocationID,
-		Notes:      input.Notes,
-		Images:     input.Images,
-	})
+	updated, err := s.Items.Update.Execute(
+		r.Context(),
+		update.Input{
+			ID:         id,
+			Name:       input.Name,
+			LocationID: input.LocationID,
+			Notes:      input.Notes,
+			Images:     input.Images,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, updated.Item)
 }
 
 // handleDeleteItem handles DELETE /api/items/{id}.
@@ -83,7 +89,12 @@ func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Items.Delete.Execute(r.Context(), deleteitem.Input{ID: id}); err != nil {
+	if err := s.Items.Delete.Execute(
+		r.Context(),
+		delete.Input{
+			ID: id,
+		},
+	); err != nil {
 		writeUseCaseError(w, err)
 		return
 	}

@@ -1,5 +1,7 @@
 package error
 
+import "errors"
+
 // NotFoundError signals that the requested record does not exist — or exists but belongs to another
 // user, which the API deliberately reports the same way. Maps to 404 Not Found.
 type NotFoundError struct {
@@ -7,6 +9,10 @@ type NotFoundError struct {
 }
 
 // Error implements the error interface.
-func (e *NotFoundError) Error() string {
+func (e NotFoundError) Error() string {
 	return e.Message
+}
+
+func IsNotFoundError(err error) bool {
+	return errors.Is(err, NotFoundError{})
 }

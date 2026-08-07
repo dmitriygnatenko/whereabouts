@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"wherewhat/internal/domain/entity"
+	"wherewhat/internal/domain/usecase/auth/authenticate"
 )
 
 // WithCORS lets the frontend call the API from another origin (e.g. running the frontend dev server
@@ -31,7 +32,7 @@ func WithCORS(next http.Handler) http.Handler {
 	})
 }
 
-// WithLogging writes a short line per request
+// WithLogging writes a short line per request.
 func WithLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -68,13 +69,18 @@ func sessionToken(r *http.Request) string {
 // requireAuth is the middleware for data endpoints: without a valid session, it never reaches next.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, err := s.Auth.Authenticate.Execute(r.Context(), sessionToken(r))
+		out, err := s.Auth.Authenticate.Execute(
+			r.Context(),
+			authenticate.Input{
+				Token: sessionToken(r),
+			},
+		)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "Authentication required")
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userContextKey, &user)
+		ctx := context.WithValue(r.Context(), userContextKey, &out.User)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}

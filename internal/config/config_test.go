@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // setEnv clears every variable in cleared, then applies env on top. Tests clear the whole group they
@@ -30,9 +32,7 @@ func unsetEnv(t *testing.T, name string) {
 
 	t.Setenv(name, "")
 
-	if err := os.Unsetenv(name); err != nil {
-		t.Fatalf("Unsetenv(%s) error = %v", name, err)
-	}
+	require.NoError(t, os.Unsetenv(name))
 }
 
 // writeDotEnv drops a .env file into a temporary directory and makes it the working one, so LoadEnv
@@ -42,9 +42,7 @@ func writeDotEnv(t *testing.T, contents string) {
 
 	t.Chdir(t.TempDir())
 
-	if err := os.WriteFile(".env", []byte(contents), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(".env", []byte(contents), 0o600))
 }
 
 // TestLoadEnv_ReadsDotEnv checks the local-development convenience: values in a .env file reach the
@@ -55,9 +53,7 @@ func TestLoadEnv_ReadsDotEnv(t *testing.T) {
 
 	LoadEnv()
 
-	if got := os.Getenv("CONFIG_TEST_FROM_FILE"); got != "from-file" {
-		t.Errorf("CONFIG_TEST_FROM_FILE = %q, want %q", got, "from-file")
-	}
+	require.Equal(t, "from-file", os.Getenv("CONFIG_TEST_FROM_FILE"))
 }
 
 // TestLoadEnv_EmptyVariableStillCounts documents a sharp edge worth knowing before debugging one:
@@ -70,9 +66,7 @@ func TestLoadEnv_EmptyVariableStillCounts(t *testing.T) {
 
 	LoadEnv()
 
-	if got := os.Getenv("CONFIG_TEST_EMPTY"); got != "" {
-		t.Errorf("CONFIG_TEST_EMPTY = %q, want the empty environment value to stand", got)
-	}
+	require.Empty(t, os.Getenv("CONFIG_TEST_EMPTY"), "want the empty environment value to stand")
 }
 
 // TestLoadEnv_RealEnvironmentWins is the contract that makes .env safe to ship: in production, where
@@ -83,9 +77,7 @@ func TestLoadEnv_RealEnvironmentWins(t *testing.T) {
 
 	LoadEnv()
 
-	if got := os.Getenv("CONFIG_TEST_PRECEDENCE"); got != "from-environment" {
-		t.Errorf("CONFIG_TEST_PRECEDENCE = %q, want the real environment to win", got)
-	}
+	require.Equal(t, "from-environment", os.Getenv("CONFIG_TEST_PRECEDENCE"), "want the real environment to win")
 }
 
 // TestLoadEnv_NoDotEnv checks that a missing .env is the normal case, not a failure: production runs
@@ -103,19 +95,29 @@ func TestStringEnv(t *testing.T) {
 		value string
 		want  string
 	}{
-		"unset":             {value: "", want: "fallback"},
-		"blank":             {value: "   ", want: "fallback"},
-		"trimmed":           {value: "  value  ", want: "value"},
-		"inner spaces kept": {value: " two words ", want: "two words"},
+		"unset": {
+			value: "",
+			want:  "fallback",
+		},
+		"blank": {
+			value: "   ",
+			want:  "fallback",
+		},
+		"trimmed": {
+			value: "  value  ",
+			want:  "value",
+		},
+		"inner spaces kept": {
+			value: " two words ",
+			want:  "two words",
+		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("CONFIG_TEST_STRING", tt.value)
 
-			if got := stringEnv("CONFIG_TEST_STRING", "fallback"); got != tt.want {
-				t.Errorf("stringEnv() = %q, want %q", got, tt.want)
-			}
+			require.Equal(t, tt.want, stringEnv("CONFIG_TEST_STRING", "fallback"))
 		})
 	}
 }
@@ -130,11 +132,26 @@ func TestTypedEnvReaders(t *testing.T) {
 			want    int
 			wantErr bool
 		}{
-			"unset":        {value: "", want: 7},
-			"blank":        {value: "  ", want: 7},
-			"padded":       {value: " 25 ", want: 25},
-			"negative":     {value: "-3", want: -3},
-			"not a number": {value: "lots", wantErr: true},
+			"unset": {
+				value: "",
+				want:  7,
+			},
+			"blank": {
+				value: "  ",
+				want:  7,
+			},
+			"padded": {
+				value: " 25 ",
+				want:  25,
+			},
+			"negative": {
+				value: "-3",
+				want:  -3,
+			},
+			"not a number": {
+				value:   "lots",
+				wantErr: true,
+			},
 		}
 
 		for name, tt := range tests {
@@ -143,16 +160,13 @@ func TestTypedEnvReaders(t *testing.T) {
 
 				got, err := intEnv("CONFIG_TEST_INT", 7)
 				if tt.wantErr {
-					if err == nil {
-						t.Fatalf("intEnv() = %d, want an error", got)
-					}
+					require.Error(t, err)
 
 					return
 				}
 
-				if err != nil || got != tt.want {
-					t.Errorf("intEnv() = %d, %v, want %d, nil", got, err, tt.want)
-				}
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
 			})
 		}
 	})
@@ -163,11 +177,26 @@ func TestTypedEnvReaders(t *testing.T) {
 			want    bool
 			wantErr bool
 		}{
-			"unset":      {value: "", want: true},
-			"blank":      {value: " ", want: true},
-			"padded":     {value: " false ", want: false},
-			"one":        {value: "1", want: true},
-			"not a bool": {value: "yes", wantErr: true},
+			"unset": {
+				value: "",
+				want:  true,
+			},
+			"blank": {
+				value: " ",
+				want:  true,
+			},
+			"padded": {
+				value: " false ",
+				want:  false,
+			},
+			"one": {
+				value: "1",
+				want:  true,
+			},
+			"not a bool": {
+				value:   "yes",
+				wantErr: true,
+			},
 		}
 
 		for name, tt := range tests {
@@ -176,16 +205,13 @@ func TestTypedEnvReaders(t *testing.T) {
 
 				got, err := boolEnv("CONFIG_TEST_BOOL", true)
 				if tt.wantErr {
-					if err == nil {
-						t.Fatalf("boolEnv() = %v, want an error", got)
-					}
+					require.Error(t, err)
 
 					return
 				}
 
-				if err != nil || got != tt.want {
-					t.Errorf("boolEnv() = %v, %v, want %v, nil", got, err, tt.want)
-				}
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
 			})
 		}
 	})
@@ -196,11 +222,26 @@ func TestTypedEnvReaders(t *testing.T) {
 			want    time.Duration
 			wantErr bool
 		}{
-			"unset":          {value: "", want: time.Minute},
-			"blank":          {value: "\t", want: time.Minute},
-			"padded":         {value: " 90s ", want: 90 * time.Second},
-			"no unit":        {value: "90", wantErr: true},
-			"not a duration": {value: "soon", wantErr: true},
+			"unset": {
+				value: "",
+				want:  time.Minute,
+			},
+			"blank": {
+				value: "\t",
+				want:  time.Minute,
+			},
+			"padded": {
+				value: " 90s ",
+				want:  90 * time.Second,
+			},
+			"no unit": {
+				value:   "90",
+				wantErr: true,
+			},
+			"not a duration": {
+				value:   "soon",
+				wantErr: true,
+			},
 		}
 
 		for name, tt := range tests {
@@ -209,16 +250,13 @@ func TestTypedEnvReaders(t *testing.T) {
 
 				got, err := durationEnv("CONFIG_TEST_DURATION", time.Minute)
 				if tt.wantErr {
-					if err == nil {
-						t.Fatalf("durationEnv() = %v, want an error", got)
-					}
+					require.Error(t, err)
 
 					return
 				}
 
-				if err != nil || got != tt.want {
-					t.Errorf("durationEnv() = %v, %v, want %v, nil", got, err, tt.want)
-				}
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
 			})
 		}
 	})
@@ -231,12 +269,24 @@ func TestPortEnv_Bounds(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		"lowest":       {value: "1"},
-		"highest":      {value: "65535"},
-		"zero":         {value: "0", wantErr: true},
-		"above range":  {value: "65536", wantErr: true},
-		"negative":     {value: "-1", wantErr: true},
-		"not a number": {value: "http", wantErr: true},
+		"lowest":  {value: "1"},
+		"highest": {value: "65535"},
+		"zero": {
+			value:   "0",
+			wantErr: true,
+		},
+		"above range": {
+			value:   "65536",
+			wantErr: true,
+		},
+		"negative": {
+			value:   "-1",
+			wantErr: true,
+		},
+		"not a number": {
+			value:   "http",
+			wantErr: true,
+		},
 	}
 
 	for name, tt := range tests {
@@ -244,15 +294,14 @@ func TestPortEnv_Bounds(t *testing.T) {
 			t.Setenv("CONFIG_TEST_PORT", tt.value)
 
 			got, err := portEnv("CONFIG_TEST_PORT", "8080")
+			if tt.wantErr {
+				require.Error(t, err)
 
-			switch {
-			case tt.wantErr && err == nil:
-				t.Errorf("portEnv() = %q, want an error", got)
-			case !tt.wantErr && err != nil:
-				t.Errorf("portEnv() error = %v, want nil", err)
-			case !tt.wantErr && got != tt.value:
-				t.Errorf("portEnv() = %q, want %q", got, tt.value)
+				return
 			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.value, got)
 		})
 	}
 }

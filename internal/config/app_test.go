@@ -1,12 +1,18 @@
 package config
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // appEnv is the full set of variables LoadApp reads.
-var appEnv = []string{"PORT", "COOKIE_SECURE", "DEMO_USERNAME", "DEMO_PASSWORD"}
+var appEnv = []string{
+	"PORT",
+	"COOKIE_SECURE",
+	"DEMO_USERNAME",
+	"DEMO_PASSWORD",
+}
 
 // setAppEnv puts the process into a known state for a LoadApp case.
 func setAppEnv(t *testing.T, env map[string]string) {
@@ -37,14 +43,8 @@ func TestLoadApp_Defaults(t *testing.T) {
 	setAppEnv(t, nil)
 
 	cfg, err := LoadApp()
-	if err != nil {
-		t.Fatalf("LoadApp() error = %v, want nil", err)
-	}
-
-	want := withAppDefaults(nil)
-	if cfg != want {
-		t.Errorf("LoadApp() = %+v, want %+v", cfg, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, withAppDefaults(nil), cfg)
 }
 
 // TestLoadApp_Valid covers the spellings each setting accepts — notably COOKIE_SECURE, which follows
@@ -56,12 +56,16 @@ func TestLoadApp_Valid(t *testing.T) {
 	}{
 		"all set": {
 			env: map[string]string{
-				"PORT": "9000", "COOKIE_SECURE": "true",
-				"DEMO_USERNAME": "alice", "DEMO_PASSWORD": "s3cret",
+				"PORT":          "9000",
+				"COOKIE_SECURE": "true",
+				"DEMO_USERNAME": "alice",
+				"DEMO_PASSWORD": "s3cret",
 			},
 			want: AppConfig{
-				Port: "9000", CookieSecure: true,
-				DemoUsername: "alice", DemoPassword: "s3cret",
+				Port:         "9000",
+				CookieSecure: true,
+				DemoUsername: "alice",
+				DemoPassword: "s3cret",
 			},
 		},
 		"cookie secure accepts 1": {
@@ -73,14 +77,21 @@ func TestLoadApp_Valid(t *testing.T) {
 			want: withAppDefaults(nil),
 		},
 		"strings are trimmed": {
-			env: map[string]string{"PORT": " 9000 ", "DEMO_USERNAME": " alice "},
+			env: map[string]string{
+				"PORT":          " 9000 ",
+				"DEMO_USERNAME": " alice ",
+			},
 			want: withAppDefaults(func(c *AppConfig) {
 				c.Port, c.DemoUsername = "9000", "alice"
 			}),
 		},
 		// A whitespace-only value is treated as unset rather than seeding an account named " ".
 		"blank strings fall back to defaults": {
-			env:  map[string]string{"PORT": " ", "DEMO_USERNAME": " ", "DEMO_PASSWORD": "  "},
+			env: map[string]string{
+				"PORT":          " ",
+				"DEMO_USERNAME": " ",
+				"DEMO_PASSWORD": "  ",
+			},
 			want: withAppDefaults(nil),
 		},
 	}
@@ -90,13 +101,8 @@ func TestLoadApp_Valid(t *testing.T) {
 			setAppEnv(t, tt.env)
 
 			cfg, err := LoadApp()
-			if err != nil {
-				t.Fatalf("LoadApp() error = %v, want nil", err)
-			}
-
-			if cfg != tt.want {
-				t.Errorf("LoadApp() = %+v, want %+v", cfg, tt.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg)
 		})
 	}
 }
@@ -108,24 +114,30 @@ func TestLoadApp_Invalid(t *testing.T) {
 		env     map[string]string
 		wantErr string
 	}{
-		"non-bool cookie flag": {env: map[string]string{"COOKIE_SECURE": "yes"}, wantErr: "COOKIE_SECURE"},
-		"non-numeric port":     {env: map[string]string{"PORT": "http"}, wantErr: "PORT"},
-		"port out of range":    {env: map[string]string{"PORT": "70000"}, wantErr: "PORT"},
-		"port zero":            {env: map[string]string{"PORT": "0"}, wantErr: "PORT"},
+		"non-bool cookie flag": {
+			env:     map[string]string{"COOKIE_SECURE": "yes"},
+			wantErr: "COOKIE_SECURE",
+		},
+		"non-numeric port": {
+			env:     map[string]string{"PORT": "http"},
+			wantErr: "PORT",
+		},
+		"port out of range": {
+			env:     map[string]string{"PORT": "70000"},
+			wantErr: "PORT",
+		},
+		"port zero": {
+			env:     map[string]string{"PORT": "0"},
+			wantErr: "PORT",
+		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			setAppEnv(t, tt.env)
 
-			cfg, err := LoadApp()
-			if err == nil {
-				t.Fatalf("LoadApp() = %+v, want an error", cfg)
-			}
-
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("LoadApp() error = %q, want it to mention %s", err, tt.wantErr)
-			}
+			_, err := LoadApp()
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }

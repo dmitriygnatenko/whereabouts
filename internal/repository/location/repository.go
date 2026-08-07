@@ -11,6 +11,7 @@ import (
 
 	"wherewhat/internal/domain/entity"
 	domainerror "wherewhat/internal/domain/error"
+	"wherewhat/internal/port"
 	"wherewhat/internal/storage/model"
 )
 
@@ -87,30 +88,24 @@ func (r *Repository) Exists(
 }
 
 // Create inserts a new location and returns it.
-func (r *Repository) Create(
-	ctx context.Context,
-	name string,
-	color string,
-	parentID *uint64,
-	now time.Time,
-) (entity.Location, error) {
-	id, err := r.storage.CreateLocation(ctx, name, color, parentID, now)
+func (r *Repository) Create(ctx context.Context, req port.LocationCreateRequest) (entity.Location, error) {
+	id, err := r.storage.CreateLocation(ctx, req.Name, req.Color, req.ParentID, req.Now)
 	if err != nil {
 		return entity.Location{}, err
 	}
 
-	return model.Location{ID: id, Name: name, Color: color, ParentID: parentID}.ToEntity(), nil
+	return model.Location{
+		ID:       id,
+		Name:     req.Name,
+		Color:    req.Color,
+		ParentID: req.ParentID,
+	}.ToEntity(), nil
 }
 
 // Update renames/recolors an existing location, reporting via the bool whether a row with that id
 // was found.
-func (r *Repository) Update(
-	ctx context.Context,
-	id uint64,
-	name string,
-	color string,
-) (bool, error) {
-	return r.storage.UpdateLocation(ctx, id, name, color)
+func (r *Repository) Update(ctx context.Context, req port.LocationUpdateRequest) (bool, error) {
+	return r.storage.UpdateLocation(ctx, req.ID, req.Name, req.Color)
 }
 
 // ParentID returns a location's parent id, or nil for a top-level location. An unknown id is

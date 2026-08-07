@@ -41,7 +41,9 @@ func wrapUnique(err error) error {
 }
 
 // insertReturningID runs an INSERT and returns the new row's id via LastInsertId.
-func (s *Storage) insertReturningID(ctx context.Context, query string, args ...any) (uint64, error) {
+func (s *Storage) insertReturningID(
+	ctx context.Context, query string, args ...any,
+) (uint64, error) {
 	res, err := s.DB.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err

@@ -13,6 +13,7 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/stretchr/testify/require"
 
 	storageError "wherewhat/internal/storage/error"
 )
@@ -29,15 +30,11 @@ func newMock(t *testing.T) (*Storage, sqlmock.Sqlmock) {
 	t.Helper()
 
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	if err != nil {
-		t.Fatalf("sqlmock.New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = db.Close() })
 	t.Cleanup(func() {
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet sqlmock expectations: %v", err)
-		}
+		require.NoError(t, mock.ExpectationsWereMet(), "unmet sqlmock expectations")
 	})
 
 	return &Storage{DB: db}, mock
@@ -75,37 +72,47 @@ var errStub = errors.New(gofakeit.Sentence())
 // TestAffected pins the translation from a driver Result to the "found?" answer the storage layer
 // gives updates and deletes.
 func TestAffected(t *testing.T) {
+	t.Parallel()
+
 	rowsTouched := int64(gofakeit.Number(1, 1000))
 
+	type args struct {
+		res sql.Result
+	}
+
 	tests := []struct {
-		name    string
-		res     sql.Result
-		want    bool
-		wantErr bool
+		name         string
+		args         args
+		assertResult func(t *testing.T, got bool)
+		assertErr    func(t *testing.T, err error)
 	}{
-		{name: "no rows touched means not found", res: sqlmock.NewResult(0, 0)},
-		{name: "rows touched means found", res: sqlmock.NewResult(0, rowsTouched), want: true},
-		{name: "the driver error is propagated", res: sqlmock.NewErrorResult(errStub), wantErr: true},
+		{
+			name:         "no rows touched means not found",
+			args:         args{res: sqlmock.NewResult(0, 0)},
+			assertResult: func(t *testing.T, got bool) { require.False(t, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
+		},
+		{
+			name:         "rows touched means found",
+			args:         args{res: sqlmock.NewResult(0, rowsTouched)},
+			assertResult: func(t *testing.T, got bool) { require.True(t, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
+		},
+		{
+			name:         "the driver error is propagated",
+			args:         args{res: sqlmock.NewErrorResult(errStub)},
+			assertResult: func(t *testing.T, got bool) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := affected(tt.res)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("affected() error = %v, want %v", err, errStub)
-				}
+			t.Parallel()
 
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("affected() error = %v", err)
-			}
-
-			if got != tt.want {
-				t.Fatalf("affected() = %v, want %v", got, tt.want)
-			}
+			got, err := affected(tt.args.res)
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
@@ -114,14 +121,17 @@ func TestAffected(t *testing.T) {
 // Postgres drivers don't support LastInsertId, so insertReturningID scans it out of a query result
 // instead of an exec result — and that a failing statement reports the error instead of a zero id.
 func TestInsertReturningID(t *testing.T) {
+	t.Parallel()
+
 	query := `INSERT INTO locations (title, color, parent_id, created_at) VALUES ($1, $2, $3, $4) RETURNING id`
 	name, color, createdAt := fakeName(), fakeColor(), fakeTime()
 	wantID := fakeID()
 
 	tests := []struct {
-		name    string
-		mock    func(mock sqlmock.Sqlmock)
-		wantErr bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got uint64)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "the id comes back from the RETURNING clause",
@@ -130,6 +140,8 @@ func TestInsertReturningID(t *testing.T) {
 					WithArgs(name, color, nil, createdAt).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(wantID))
 			},
+			assertResult: func(t *testing.T, got uint64) { require.Equal(t, wantID, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a failing statement returns its error",
@@ -138,31 +150,21 @@ func TestInsertReturningID(t *testing.T) {
 					WithArgs(name, color, nil, createdAt).
 					WillReturnError(errStub)
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, got uint64) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			got, err := s.insertReturningID(context.Background(), query, name, color, nil, createdAt)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("insertReturningID() error = %v, want %v", err, errStub)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("insertReturningID() error = %v", err)
-			}
-
-			if got != wantID {
-				t.Fatalf("insertReturningID() = %d, want %d", got, wantID)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
@@ -172,44 +174,62 @@ func TestInsertReturningID(t *testing.T) {
 // error still wrapped inside. Every other error — including another constraint failure — has to pass
 // through untouched, otherwise a repository would report "already taken" for an unrelated failure.
 func TestWrapUnique(t *testing.T) {
+	t.Parallel()
+
 	fkViolation := pgErr(pgForeignKeyViolation)
 	duplicate := pgErr(pgUniqueViolation)
 
+	type args struct {
+		err error
+	}
+
 	tests := []struct {
-		name       string
-		err        error
-		wantNil    bool
-		wantUnique bool
+		name         string
+		args         args
+		assertResult func(t *testing.T, in error, got error)
 	}{
-		{name: "nil passes through", err: nil, wantNil: true},
-		{name: "an unrelated error passes through", err: errStub},
-		{name: "another constraint failure passes through", err: fkViolation},
-		{name: "a unique violation is wrapped", err: duplicate, wantUnique: true},
+		{
+			name: "nil passes through",
+			args: args{err: nil},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.Nil(t, got)
+			},
+		},
+		{
+			name: "an unrelated error passes through",
+			args: args{err: errStub},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.ErrorIs(t, got, in)
+				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+			},
+		},
+		{
+			name: "another constraint failure passes through",
+			args: args{err: fkViolation},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.ErrorIs(t, got, in)
+				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+			},
+		},
+		{
+			name: "a unique violation is wrapped",
+			args: args{err: duplicate},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.ErrorIs(t, got, in)
+				require.ErrorIs(t, got, storageError.UniqueViolationError)
+
+				var driverErr *pgconn.PgError
+				require.ErrorAs(t, got, &driverErr)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := wrapUnique(tt.err)
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("wrapUnique(nil) = %v, want nil", got)
-				}
+			t.Parallel()
 
-				return
-			}
-
-			if !errors.Is(got, tt.err) {
-				t.Fatalf("wrapUnique(%v) = %v, dropped the original error", tt.err, got)
-			}
-
-			if isUnique := errors.Is(got, storageError.UniqueViolationError); isUnique != tt.wantUnique {
-				t.Fatalf("wrapUnique(%v): unique violation = %v, want %v", tt.err, isUnique, tt.wantUnique)
-			}
-
-			var driverErr *pgconn.PgError
-			if tt.wantUnique && !errors.As(got, &driverErr) {
-				t.Fatalf("wrapUnique(%v) = %v, want a *pgconn.PgError still reachable via errors.As", tt.err, got)
-			}
+			got := wrapUnique(tt.args.err)
+			tt.assertResult(t, tt.args.err, got)
 		})
 	}
 }
@@ -221,6 +241,8 @@ func TestWrapUnique(t *testing.T) {
 // distinguished here from a name that passes it and fails later for the mundane reason that nothing
 // is listening on the port.
 func TestEnsureDatabase(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name             string
 		dbName           string
@@ -235,17 +257,13 @@ func TestEnsureDatabase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := Config{Host: "127.0.0.1", Port: closedPort(t), Name: tt.dbName}
 
 			err := EnsureDatabase(cfg)
-			if err == nil {
-				t.Fatalf("EnsureDatabase(%q) error = nil, want an error either way", tt.dbName)
-			}
-
-			gotRejectedName := strings.Contains(err.Error(), "invalid database name")
-			if gotRejectedName != tt.wantRejectedName {
-				t.Fatalf("EnsureDatabase(%q) error = %v, want the name rejected = %v", tt.dbName, err, tt.wantRejectedName)
-			}
+			require.Error(t, err, "want an error either way")
+			require.Equal(t, tt.wantRejectedName, strings.Contains(err.Error(), "invalid database name"))
 		})
 	}
 }
@@ -254,6 +272,8 @@ func TestEnsureDatabase(t *testing.T) {
 // first query — a lazily-connecting driver would otherwise stay silent about it. A live server isn't
 // needed for this: a closed local port refuses the connection deterministically everywhere.
 func TestOpen(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Host: "127.0.0.1", Port: closedPort(t), User: fakeUsername(), Password: fakeHash(), Name: gofakeit.Word(),
 	}
@@ -261,9 +281,9 @@ func TestOpen(t *testing.T) {
 	s, err := Open(cfg)
 	if err == nil {
 		_ = s.Close()
-
-		t.Fatalf("Open(%+v) error = nil, want an error for an unreachable server", cfg)
 	}
+
+	require.Error(t, err, "want an error for an unreachable server")
 }
 
 // closedPort returns a TCP port on localhost that nothing is listening on, by opening then
@@ -273,9 +293,7 @@ func closedPort(t *testing.T) string {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("finding a free port: %v", err)
-	}
+	require.NoError(t, err, "finding a free port")
 
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()

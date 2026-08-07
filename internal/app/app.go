@@ -19,18 +19,17 @@ import (
 	"wherewhat/internal/domain/service/imageprocessor"
 	"wherewhat/internal/domain/service/passwordhasher"
 	"wherewhat/internal/domain/service/tokengenerator"
-	"wherewhat/internal/domain/usecase/auth/authenticatesession"
+	"wherewhat/internal/domain/usecase/auth/authenticate"
 	"wherewhat/internal/domain/usecase/auth/login"
-	"wherewhat/internal/domain/usecase/auth/logoutuser"
-	"wherewhat/internal/domain/usecase/auth/registeruser"
-	"wherewhat/internal/domain/usecase/item/createitem"
-	"wherewhat/internal/domain/usecase/item/deleteitem"
-	"wherewhat/internal/domain/usecase/item/listitems"
-	"wherewhat/internal/domain/usecase/item/updateitem"
-	"wherewhat/internal/domain/usecase/location/createlocation"
-	"wherewhat/internal/domain/usecase/location/deletelocation"
-	"wherewhat/internal/domain/usecase/location/listlocations"
-	"wherewhat/internal/domain/usecase/location/updatelocation"
+	"wherewhat/internal/domain/usecase/auth/logout"
+	itemCreate "wherewhat/internal/domain/usecase/item/create"
+	itemDelete "wherewhat/internal/domain/usecase/item/delete"
+	itemList "wherewhat/internal/domain/usecase/item/list"
+	itemUpdate "wherewhat/internal/domain/usecase/item/update"
+	locationCreate "wherewhat/internal/domain/usecase/location/create"
+	locationDelete "wherewhat/internal/domain/usecase/location/delete"
+	locationList "wherewhat/internal/domain/usecase/location/list"
+	locationUpdate "wherewhat/internal/domain/usecase/location/update"
 	"wherewhat/internal/domain/usecase/user/changepassword"
 	"wherewhat/internal/domain/usecase/user/updatelanguage"
 	"wherewhat/internal/domain/usecase/user/updatelocationfilterdepth"
@@ -110,7 +109,7 @@ func Run() error {
 	locationRepo := locationrepo.New(store)
 	userRepo := userrepo.New(store)
 	sessionRepo := sessionrepo.New(store)
-	startSessionCleanup(ctx, sessionRepo)
+	startSessionCleanup(ctx, sessionRepo, sessionCleanupInterval)
 
 	hasher := passwordhasher.New()
 	tokens := tokengenerator.New()
@@ -127,22 +126,21 @@ func Run() error {
 
 	srv := &httpAPI.Server{
 		Items: httpAPI.ItemUseCases{
-			Create: createitem.New(itemRepo, locationRepo, imgStore, imgProc),
-			Update: updateitem.New(itemRepo, locationRepo, imgStore, imgProc),
-			Delete: deleteitem.New(itemRepo, imgStore),
-			List:   listitems.New(itemRepo),
+			Create: itemCreate.New(itemRepo, locationRepo, imgStore, imgProc),
+			Update: itemUpdate.New(itemRepo, locationRepo, imgStore, imgProc),
+			Delete: itemDelete.New(itemRepo, imgStore),
+			List:   itemList.New(itemRepo),
 		},
 		Locations: httpAPI.LocationUseCases{
-			Create: createlocation.New(locationRepo),
-			Update: updatelocation.New(locationRepo),
-			Delete: deletelocation.New(locationRepo, itemRepo),
-			List:   listlocations.New(locationRepo),
+			Create: locationCreate.New(locationRepo),
+			Update: locationUpdate.New(locationRepo),
+			Delete: locationDelete.New(locationRepo, itemRepo),
+			List:   locationList.New(locationRepo),
 		},
 		Auth: httpAPI.AuthUseCases{
-			Register:     registeruser.New(userRepo, sessionRepo, hasher, tokens),
 			Login:        login.New(userRepo, sessionRepo, hasher, tokens),
-			Logout:       logoutuser.New(sessionRepo),
-			Authenticate: authenticatesession.New(sessionRepo, userRepo),
+			Logout:       logout.New(sessionRepo),
+			Authenticate: authenticate.New(sessionRepo, userRepo),
 		},
 		Users: httpAPI.UserUseCases{
 			UpdateLanguage:            updatelanguage.New(userRepo),

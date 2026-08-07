@@ -8,18 +8,17 @@ import (
 	"net/http"
 
 	"wherewhat/internal/adapter/filesystem"
-	"wherewhat/internal/domain/usecase/auth/authenticatesession"
+	"wherewhat/internal/domain/usecase/auth/authenticate"
 	"wherewhat/internal/domain/usecase/auth/login"
-	"wherewhat/internal/domain/usecase/auth/logoutuser"
-	"wherewhat/internal/domain/usecase/auth/registeruser"
-	"wherewhat/internal/domain/usecase/item/createitem"
-	"wherewhat/internal/domain/usecase/item/deleteitem"
-	"wherewhat/internal/domain/usecase/item/listitems"
-	"wherewhat/internal/domain/usecase/item/updateitem"
-	"wherewhat/internal/domain/usecase/location/createlocation"
-	"wherewhat/internal/domain/usecase/location/deletelocation"
-	"wherewhat/internal/domain/usecase/location/listlocations"
-	"wherewhat/internal/domain/usecase/location/updatelocation"
+	"wherewhat/internal/domain/usecase/auth/logout"
+	itemCreate "wherewhat/internal/domain/usecase/item/create"
+	itemDelete "wherewhat/internal/domain/usecase/item/delete"
+	itemList "wherewhat/internal/domain/usecase/item/list"
+	itemUpdate "wherewhat/internal/domain/usecase/item/update"
+	locationCreate "wherewhat/internal/domain/usecase/location/create"
+	locationDelete "wherewhat/internal/domain/usecase/location/delete"
+	locationList "wherewhat/internal/domain/usecase/location/list"
+	locationUpdate "wherewhat/internal/domain/usecase/location/update"
 	"wherewhat/internal/domain/usecase/user/changepassword"
 	"wherewhat/internal/domain/usecase/user/updatelanguage"
 	"wherewhat/internal/domain/usecase/user/updatelocationfilterdepth"
@@ -28,26 +27,25 @@ import (
 
 // ItemUseCases collects the use cases behind the /api/items routes.
 type ItemUseCases struct {
-	Create *createitem.UseCase
-	Update *updateitem.UseCase
-	Delete *deleteitem.UseCase
-	List   *listitems.UseCase
+	Create *itemCreate.UseCase
+	Update *itemUpdate.UseCase
+	Delete *itemDelete.UseCase
+	List   *itemList.UseCase
 }
 
 // LocationUseCases collects the use cases behind the /api/locations routes.
 type LocationUseCases struct {
-	Create *createlocation.UseCase
-	Update *updatelocation.UseCase
-	Delete *deletelocation.UseCase
-	List   *listlocations.UseCase
+	Create *locationCreate.UseCase
+	Update *locationUpdate.UseCase
+	Delete *locationDelete.UseCase
+	List   *locationList.UseCase
 }
 
 // AuthUseCases collects the use cases behind the /api/auth routes.
 type AuthUseCases struct {
-	Register     *registeruser.UseCase
 	Login        *login.UseCase
-	Logout       *logoutuser.UseCase
-	Authenticate *authenticatesession.UseCase
+	Logout       *logout.UseCase
+	Authenticate *authenticate.UseCase
 }
 
 // UserUseCases collects the use cases behind the /api/user routes.
@@ -75,7 +73,6 @@ type Server struct {
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 
-	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", s.handleMe)

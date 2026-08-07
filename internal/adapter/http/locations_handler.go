@@ -3,9 +3,9 @@ package http
 import (
 	"net/http"
 
-	"wherewhat/internal/domain/usecase/location/createlocation"
-	"wherewhat/internal/domain/usecase/location/deletelocation"
-	"wherewhat/internal/domain/usecase/location/updatelocation"
+	"wherewhat/internal/domain/usecase/location/create"
+	"wherewhat/internal/domain/usecase/location/delete"
+	"wherewhat/internal/domain/usecase/location/update"
 )
 
 type locationRequest struct {
@@ -22,7 +22,7 @@ func (s *Server) handleListLocations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, locations)
+	writeJSON(w, http.StatusOK, locations.Locations)
 }
 
 // handleCreateLocation handles POST /api/locations.
@@ -33,17 +33,20 @@ func (s *Server) handleCreateLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := s.Locations.Create.Execute(r.Context(), createlocation.Input{
-		Name:     input.Name,
-		Color:    input.Color,
-		ParentID: input.ParentID,
-	})
+	created, err := s.Locations.Create.Execute(
+		r.Context(),
+		create.Input{
+			Name:     input.Name,
+			Color:    input.Color,
+			ParentID: input.ParentID,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, created)
+	writeJSON(w, http.StatusCreated, created.Location)
 }
 
 // handleUpdateLocation handles PUT /api/locations/{id}.
@@ -59,17 +62,20 @@ func (s *Server) handleUpdateLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.Locations.Update.Execute(r.Context(), updatelocation.Input{
-		ID:    id,
-		Name:  input.Name,
-		Color: input.Color,
-	})
+	updated, err := s.Locations.Update.Execute(
+		r.Context(),
+		update.Input{
+			ID:    id,
+			Name:  input.Name,
+			Color: input.Color,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, updated.Location)
 }
 
 // handleDeleteLocation handles DELETE /api/locations/{id}.
@@ -79,7 +85,12 @@ func (s *Server) handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Locations.Delete.Execute(r.Context(), deletelocation.Input{ID: id}); err != nil {
+	if err := s.Locations.Delete.Execute(
+		r.Context(),
+		delete.Input{
+			ID: id,
+		},
+	); err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
