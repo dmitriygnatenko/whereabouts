@@ -27,7 +27,7 @@ type ValidationError struct {
 // message (Go map iteration order is random). A lone field error is returned verbatim — the
 // frontend translates backend messages by exact match (see SERVER_ERRORS in web/i18n.js), and only
 // the multi-error case, which has no translation entry anyway, gets joined into "One. Two.".
-func (e *ValidationError) Error() string {
+func (e ValidationError) Error() string {
 	messages := make([]string, 0, len(e.Fields))
 
 	for _, field := range slices.Sorted(maps.Keys(e.Fields)) {
@@ -81,4 +81,8 @@ func ToValidationError(err error) *ValidationError {
 	return &ValidationError{
 		Message: err.Error(),
 	}
+}
+
+func IsValidationError(err error) bool {
+	return errors.Is(err, ValidationError{})
 }

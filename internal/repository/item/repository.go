@@ -11,6 +11,7 @@ import (
 
 	"wherewhat/internal/domain/entity"
 	domainerror "wherewhat/internal/domain/error"
+	"wherewhat/internal/port"
 	"wherewhat/internal/storage/model"
 )
 
@@ -113,27 +114,14 @@ func (r *Repository) GetByID(
 }
 
 // Create inserts a new item and returns its id.
-func (r *Repository) Create(
-	ctx context.Context,
-	name string,
-	notes string,
-	locationID uint64,
-	now time.Time,
-) (uint64, error) {
-	return r.storage.CreateItem(ctx, name, notes, locationID, now)
+func (r *Repository) Create(ctx context.Context, req port.ItemCreateRequest) (uint64, error) {
+	return r.storage.CreateItem(ctx, req.Name, req.Notes, req.LocationID, req.Now)
 }
 
 // Update rewrites an existing item's fields, reporting via the bool whether a row with that id was
 // found.
-func (r *Repository) Update(
-	ctx context.Context,
-	id uint64,
-	name string,
-	notes string,
-	locationID uint64,
-	now time.Time,
-) (bool, error) {
-	return r.storage.UpdateItem(ctx, id, name, notes, locationID, now)
+func (r *Repository) Update(ctx context.Context, req port.ItemUpdateRequest) (bool, error) {
+	return r.storage.UpdateItem(ctx, req.ID, req.Name, req.Notes, req.LocationID, req.Now)
 }
 
 // ReplaceImages overwrites an item's photo set with images (in the given order) and returns

@@ -3,36 +3,10 @@ package http
 import (
 	"net/http"
 
+	"wherewhat/internal/domain/usecase/auth/authenticate"
 	"wherewhat/internal/domain/usecase/auth/login"
-	"wherewhat/internal/domain/usecase/auth/registeruser"
+	"wherewhat/internal/domain/usecase/auth/logout"
 )
-
-type registerRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-// handleRegister handles POST /api/auth/register.
-func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	var input registerRequest
-	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	out, err := s.Auth.Register.Execute(r.Context(), registeruser.Input{
-		Username: input.Username,
-		Password: input.Password,
-	})
-	if err != nil {
-		writeUseCaseError(w, err)
-		return
-	}
-
-	s.setSessionCookie(w, out.Session)
-
-	writeJSON(w, http.StatusCreated, out.User)
-}
 
 type loginRequest struct {
 	Username string `json:"username"`
@@ -50,11 +24,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.Auth.Login.Execute(r.Context(), login.Input{
-		Username: input.Username,
-		Password: input.Password,
-		Language: input.Language,
-	})
+	out, err := s.Auth.Login.Execute(
+		r.Context(),
+		login.Input{
+			Username: input.Username,
+			Password: input.Password,
+			Language: input.Language,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
@@ -67,7 +44,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout handles POST /api/auth/logout.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	s.Auth.Logout.Execute(r.Context(), sessionToken(r))
+	s.Auth.Logout.Execute(
+		r.Context(),
+		logout.Input{
+			Token: sessionToken(r),
+		},
+	)
 
 	s.clearSessionCookie(w)
 
@@ -77,11 +59,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // handleMe handles GET /api/auth/me — reports the current session's user, or 401 if there isn't
 // one.
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	user, err := s.Auth.Authenticate.Execute(r.Context(), sessionToken(r))
+	out, err := s.Auth.Authenticate.Execute(
+		r.Context(),
+		authenticate.Input{
+			Token: sessionToken(r),
+		},
+	)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, user)
+	writeJSON(w, http.StatusOK, out.User)
 }

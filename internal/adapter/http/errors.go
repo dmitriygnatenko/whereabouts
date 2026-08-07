@@ -1,7 +1,6 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 
 	domainerror "wherewhat/internal/domain/error"
@@ -11,33 +10,28 @@ import (
 // user-facing message, this only picks the status code from the error's type. An error of no known
 // domain type is an internal failure and becomes a 500.
 func writeUseCaseError(w http.ResponseWriter, err error) {
-	var verr *domainerror.ValidationError
-	if errors.As(err, &verr) {
-		writeError(w, http.StatusBadRequest, verr.Error())
+	if domainerror.IsValidationError(err) {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	var nferr *domainerror.NotFoundError
-	if errors.As(err, &nferr) {
-		writeError(w, http.StatusNotFound, nferr.Error())
+	if domainerror.IsNotFoundError(err) {
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	var cerr *domainerror.ConflictError
-	if errors.As(err, &cerr) {
-		writeError(w, http.StatusConflict, cerr.Error())
+	if domainerror.IsConflictError(err) {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 
-	var ferr *domainerror.ForbiddenError
-	if errors.As(err, &ferr) {
-		writeError(w, http.StatusForbidden, ferr.Error())
+	if domainerror.IsForbiddenError(err) {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 
-	var uerr *domainerror.UnauthorizedError
-	if errors.As(err, &uerr) {
-		writeError(w, http.StatusUnauthorized, uerr.Error())
+	if domainerror.IsUnauthorizedError(err) {
+		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 

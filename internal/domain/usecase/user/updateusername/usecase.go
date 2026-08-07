@@ -5,60 +5,92 @@ package updateusername
 import (
 	"context"
 	"errors"
-	"strings"
-	"wherewhat/internal/domain/entity"
+	"log/slog"
 
 	domainerror "wherewhat/internal/domain/error"
-	"wherewhat/internal/domain/usecase/user/shared"
-	"wherewhat/internal/domain/usecase/validate"
+	"wherewhat/internal/domain/usecase"
 	"wherewhat/internal/port"
 )
 
 // UseCase implements UpdateUsername.
 type UseCase struct {
-	Users  port.UserRepository
-	Hasher port.PasswordHasher
+	userRepository port.UserRepository
+	passwordHasher port.PasswordHasher
 }
 
 // New builds a UseCase from its dependencies.
-func New(users port.UserRepository, hasher port.PasswordHasher) *UseCase {
-	return &UseCase{Users: users, Hasher: hasher}
+func New(
+	userRepository port.UserRepository,
+	passwordHasher port.PasswordHasher,
+) *UseCase {
+	return &UseCase{
+		userRepository: userRepository,
+		passwordHasher: passwordHasher,
+	}
 }
 
 // Execute changes the signed-in user's username, after confirming their current password.
-func (uc *UseCase) Execute(ctx context.Context, in Input) (Output, error) {
-	username := strings.ToLower(strings.TrimSpace(in.Username))
-	if verr := validate.Username(username); verr != nil {
-		return entity.PublicUser{}, verr
+func (uc *UseCase) Execute(
+	ctx context.Context,
+	input Input,
+) (Output, error) {
+	if err := input.Validate(); err != nil {
+		slog.InfoContext(ctx, "update username: validation", "error", err)
+
+		return Output{}, domainerror.ToValidationError(err)
 	}
 
-	ok, err := shared.CheckCurrentPassword(ctx, uc.Users, uc.Hasher, in.User.ID, in.CurrentPassword)
+	username := usecase.NormalizeUsername(input.Username)
+
+	ok, err := usecase.CheckCurrentPassword(
+		ctx,
+		usecase.CheckCurrentPasswordRequest{
+			Users:    uc.userRepository,
+			Hasher:   uc.passwordHasher,
+			UserID:   input.User.ID,
+			Password: input.CurrentPassword,
+		},
+	)
 	if err != nil {
-		return entity.PublicUser{}, errors.New("Failed to verify current password")
+		slog.ErrorContext(ctx, "update username: verify current password", "error", err)
+
+		return Output{}, errors.New("Failed to verify current password")
 	}
 
 	if !ok {
+		slog.InfoContext(
+			ctx,
+			"update username: incorrect current password",
+			"user_id", input.User.ID,
+		)
+
 		// Forbidden, not unauthorized: the session itself is still valid — only the re-entered password
 		// was wrong. Treating this as Unauthorized would trip the frontend's global "session expired"
 		// handler and log the user out.
-		return entity.PublicUser{}, &domainerror.ForbiddenError{Message: "Incorrect current password"}
+		return Output{}, &domainerror.ForbiddenError{Message: "Incorrect current password"}
 	}
 
-	if username == in.User.Username {
-		return in.User, nil
+	if username == input.User.Username {
+		return Output{User: input.User}, nil
 	}
 
-	if err := uc.Users.UpdateUsername(ctx, in.User.ID, username); err != nil {
+	if err = uc.userRepository.UpdateUsername(ctx, input.User.ID, username); err != nil {
 		var conflict *domainerror.ConflictError
 		if errors.As(err, &conflict) {
-			return entity.PublicUser{}, conflict
+			slog.InfoContext(ctx, "update username: conflict", "user_id", input.User.ID)
+
+			return Output{}, conflict
 		}
 
-		return entity.PublicUser{}, errors.New("Failed to update username")
+		slog.ErrorContext(ctx, "update username: save", "user_id", input.User.ID, "error", err)
+
+		return Output{}, errors.New("Failed to update username")
 	}
 
-	updated := in.User
+	updated := input.User
 	updated.Username = username
 
-	return updated, nil
+	return Output{
+		User: updated,
+	}, nil
 }

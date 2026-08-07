@@ -11,6 +11,23 @@ import (
 
 //go:generate go tool mockgen -source=item_repository.go -destination=mocks/item_repository_mock.go -package=mocks
 
+// ItemCreateRequest bundles the ItemRepository.Create parameters that ride along with the context.
+type ItemCreateRequest struct {
+	Name       string
+	Notes      string
+	LocationID uint64
+	Now        time.Time
+}
+
+// ItemUpdateRequest bundles the ItemRepository.Update parameters that ride along with the context.
+type ItemUpdateRequest struct {
+	ID         uint64
+	Name       string
+	Notes      string
+	LocationID uint64
+	Now        time.Time
+}
+
 // ItemRepository persists Items and their photos.
 type ItemRepository interface {
 	List(ctx context.Context) ([]entity.Item, error)
@@ -18,10 +35,10 @@ type ItemRepository interface {
 
 	// Create inserts the item row and returns its new id. It does not touch photos — call
 	// ReplaceImages afterwards, mirroring Update.
-	Create(ctx context.Context, name, notes string, locationID uint64, now time.Time) (id uint64, err error)
+	Create(ctx context.Context, req ItemCreateRequest) (id uint64, err error)
 
 	// Update rewrites the item row. found is false if no row with this id exists.
-	Update(ctx context.Context, id uint64, name, notes string, locationID uint64, now time.Time) (found bool, err error)
+	Update(ctx context.Context, req ItemUpdateRequest) (found bool, err error)
 
 	// ReplaceImages swaps an item's photo rows for the given URLs and reports which previously-stored
 	// URLs are no longer referenced, so the caller can delete their files via port.ImageStorage.

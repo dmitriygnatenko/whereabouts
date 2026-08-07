@@ -10,6 +10,7 @@ import (
 
 	"wherewhat/internal/domain/entity"
 	domainerror "wherewhat/internal/domain/error"
+	"wherewhat/internal/port"
 	storageError "wherewhat/internal/storage/error"
 	"wherewhat/internal/storage/model"
 )
@@ -88,13 +89,10 @@ func (r *Repository) FindByID(
 
 // Create inserts a new user and returns its id. A username collision is reported as a
 // *domainerror.ConflictError.
-func (r *Repository) Create(
-	ctx context.Context,
-	username string,
-	passwordHash string,
-	settings entity.UserSettings,
-) (uint64, error) {
-	id, err := r.storage.CreateUser(ctx, username, passwordHash, model.UserSettingsFromEntity(settings))
+func (r *Repository) Create(ctx context.Context, req port.UserCreateRequest) (uint64, error) {
+	id, err := r.storage.CreateUser(
+		ctx, req.Username, req.PasswordHash, model.UserSettingsFromEntity(req.Settings),
+	)
 	if err != nil {
 		return 0, conflict(err)
 	}

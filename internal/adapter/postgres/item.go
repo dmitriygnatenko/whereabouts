@@ -49,7 +49,9 @@ func (s *Storage) FindItemByID(ctx context.Context, id uint64) (model.Item, erro
 
 // ListItemImages fetches the photos of several items in one query, to avoid N+1 round-trips when
 // listing.
-func (s *Storage) ListItemImages(ctx context.Context, itemIDs []uint64) (map[uint64][]string, error) {
+func (s *Storage) ListItemImages(
+	ctx context.Context, itemIDs []uint64,
+) (map[uint64][]string, error) {
 	args := make([]any, len(itemIDs))
 	placeholders := make([]string, len(itemIDs))
 

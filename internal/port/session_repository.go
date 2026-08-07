@@ -3,6 +3,7 @@ package port
 import (
 	"context"
 	"time"
+
 	"wherewhat/internal/domain/entity"
 )
 
@@ -18,7 +19,7 @@ type SessionRepository interface {
 	Delete(ctx context.Context, token string) error
 	// DeleteExpired removes every session whose expiry is before now — sessions are otherwise only
 	// ever deleted lazily, the one time an expired token happens to be presented again (see
-	// authenticatesession.UseCase), so a periodic sweep is what actually keeps the table from growing
+	// authenticate.UseCase), so a periodic sweep is what actually keeps the table from growing
 	// forever with sessions nobody ever came back to use.
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }

@@ -27,16 +27,19 @@ func (s *Server) handleUpdateLanguage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.Users.UpdateLanguage.Execute(r.Context(), updatelanguage.Input{
-		User:     *current,
-		Language: input.Language,
-	})
+	updated, err := s.Users.UpdateLanguage.Execute(
+		r.Context(),
+		updatelanguage.Input{
+			User:     *current,
+			Language: input.Language,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, updated.User)
 }
 
 type updateLocationFilterDepthRequest struct {
@@ -57,16 +60,19 @@ func (s *Server) handleUpdateLocationFilterDepth(w http.ResponseWriter, r *http.
 		return
 	}
 
-	updated, err := s.Users.UpdateLocationFilterDepth.Execute(r.Context(), updatelocationfilterdepth.Input{
-		User:  *current,
-		Depth: input.LocationFilterDepth,
-	})
+	updated, err := s.Users.UpdateLocationFilterDepth.Execute(
+		r.Context(),
+		updatelocationfilterdepth.Input{
+			User:  *current,
+			Depth: input.LocationFilterDepth,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, updated.User)
 }
 
 type updateUsernameRequest struct {
@@ -88,17 +94,20 @@ func (s *Server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.Users.UpdateUsername.Execute(r.Context(), updateusername.Input{
-		User:            *current,
-		Username:        input.Username,
-		CurrentPassword: input.CurrentPassword,
-	})
+	updated, err := s.Users.UpdateUsername.Execute(
+		r.Context(),
+		updateusername.Input{
+			User:            *current,
+			Username:        input.Username,
+			CurrentPassword: input.CurrentPassword,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, updated.User)
 }
 
 type changePasswordRequest struct {
@@ -120,11 +129,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.Users.ChangePassword.Execute(r.Context(), changepassword.Input{
-		User:            *current,
-		CurrentPassword: input.CurrentPassword,
-		NewPassword:     input.NewPassword,
-	})
+	err := s.Users.ChangePassword.Execute(
+		r.Context(),
+		changepassword.Input{
+			User:            *current,
+			CurrentPassword: input.CurrentPassword,
+			NewPassword:     input.NewPassword,
+		},
+	)
 	if err != nil {
 		writeUseCaseError(w, err)
 		return

@@ -5,4 +5,6 @@ import (
 )
 
 // Output is the user, with the new filter depth applied.
-type Output = entity.PublicUser
+type Output struct {
+	User entity.PublicUser
+}

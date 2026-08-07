@@ -12,6 +12,7 @@ import (
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/stretchr/testify/require"
 
 	"modernc.org/sqlite"
 
@@ -25,15 +26,11 @@ func newMock(t *testing.T) (*Storage, sqlmock.Sqlmock) {
 	t.Helper()
 
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	if err != nil {
-		t.Fatalf("sqlmock.New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = db.Close() })
 	t.Cleanup(func() {
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet sqlmock expectations: %v", err)
-		}
+		require.NoError(t, mock.ExpectationsWereMet(), "unmet sqlmock expectations")
 	})
 
 	return &Storage{DB: db}, mock
@@ -133,37 +130,47 @@ var errStub = errors.New(gofakeit.Sentence())
 // TestAffected pins the translation from a driver Result to the "found?" answer the storage layer
 // gives updates and deletes.
 func TestAffected(t *testing.T) {
+	t.Parallel()
+
 	rowsTouched := int64(gofakeit.Number(1, 1000))
 
+	type args struct {
+		res sql.Result
+	}
+
 	tests := []struct {
-		name    string
-		res     sql.Result
-		want    bool
-		wantErr bool
+		name         string
+		args         args
+		assertResult func(t *testing.T, got bool)
+		assertErr    func(t *testing.T, err error)
 	}{
-		{name: "no rows touched means not found", res: sqlmock.NewResult(0, 0)},
-		{name: "rows touched means found", res: sqlmock.NewResult(0, rowsTouched), want: true},
-		{name: "the driver error is propagated", res: sqlmock.NewErrorResult(errStub), wantErr: true},
+		{
+			name:         "no rows touched means not found",
+			args:         args{res: sqlmock.NewResult(0, 0)},
+			assertResult: func(t *testing.T, got bool) { require.False(t, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
+		},
+		{
+			name:         "rows touched means found",
+			args:         args{res: sqlmock.NewResult(0, rowsTouched)},
+			assertResult: func(t *testing.T, got bool) { require.True(t, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
+		},
+		{
+			name:         "the driver error is propagated",
+			args:         args{res: sqlmock.NewErrorResult(errStub)},
+			assertResult: func(t *testing.T, got bool) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := affected(tt.res)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("affected() error = %v, want %v", err, errStub)
-				}
+			t.Parallel()
 
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("affected() error = %v", err)
-			}
-
-			if got != tt.want {
-				t.Fatalf("affected() = %v, want %v", got, tt.want)
-			}
+			got, err := affected(tt.args.res)
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
@@ -171,14 +178,17 @@ func TestAffected(t *testing.T) {
 // TestInsertReturningID checks that the generated id comes back from LastInsertId, and that a failing
 // statement reports the error instead of a zero id.
 func TestInsertReturningID(t *testing.T) {
+	t.Parallel()
+
 	query := `INSERT INTO locations (title, color, parent_id, created_at) VALUES (?, ?, ?, ?)`
 	name, color, createdAt := fakeName(), fakeColor(), fakeTime()
 	wantID := int64(fakeID())
 
 	tests := []struct {
-		name    string
-		mock    func(mock sqlmock.Sqlmock)
-		wantErr bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got uint64)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "the id comes back from LastInsertId",
@@ -187,6 +197,8 @@ func TestInsertReturningID(t *testing.T) {
 					WithArgs(name, color, nil, createdAt).
 					WillReturnResult(sqlmock.NewResult(wantID, 1))
 			},
+			assertResult: func(t *testing.T, got uint64) { require.Equal(t, uint64(wantID), got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a failing statement returns its error",
@@ -195,31 +207,21 @@ func TestInsertReturningID(t *testing.T) {
 					WithArgs(name, color, nil, createdAt).
 					WillReturnError(errStub)
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, got uint64) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			got, err := s.insertReturningID(context.Background(), query, name, color, nil, createdAt)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("insertReturningID() error = %v, want %v", err, errStub)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("insertReturningID() error = %v", err)
-			}
-
-			if got != uint64(wantID) {
-				t.Fatalf("insertReturningID() = %d, want %d", got, wantID)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
@@ -229,41 +231,59 @@ func TestInsertReturningID(t *testing.T) {
 // inside. Every other error — including another SQLite constraint failure — has to pass through
 // untouched, otherwise a repository would report "already taken" for an unrelated failure.
 func TestWrapUnique(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		err error
+	}
+
 	tests := []struct {
-		name       string
-		err        error
-		wantNil    bool
-		wantUnique bool
+		name         string
+		args         args
+		assertResult func(t *testing.T, in error, got error)
 	}{
-		{name: "nil passes through", err: nil, wantNil: true},
-		{name: "an unrelated error passes through", err: errStub},
-		{name: "another constraint failure passes through", err: sqliteForeignKeyErr()},
-		{name: "a unique violation is wrapped", err: sqliteUniqueErr(), wantUnique: true},
+		{
+			name: "nil passes through",
+			args: args{err: nil},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.Nil(t, got)
+			},
+		},
+		{
+			name: "an unrelated error passes through",
+			args: args{err: errStub},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.ErrorIs(t, got, in)
+				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+			},
+		},
+		{
+			name: "another constraint failure passes through",
+			args: args{err: sqliteForeignKeyErr()},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.ErrorIs(t, got, in)
+				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+			},
+		},
+		{
+			name: "a unique violation is wrapped",
+			args: args{err: sqliteUniqueErr()},
+			assertResult: func(t *testing.T, in error, got error) {
+				require.ErrorIs(t, got, in)
+				require.ErrorIs(t, got, storageError.UniqueViolationError)
+
+				var driverErr *sqlite.Error
+				require.ErrorAs(t, got, &driverErr)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := wrapUnique(tt.err)
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("wrapUnique(nil) = %v, want nil", got)
-				}
+			t.Parallel()
 
-				return
-			}
-
-			if !errors.Is(got, tt.err) {
-				t.Fatalf("wrapUnique(%v) = %v, dropped the original error", tt.err, got)
-			}
-
-			if isUnique := errors.Is(got, storageError.UniqueViolationError); isUnique != tt.wantUnique {
-				t.Fatalf("wrapUnique(%v): unique violation = %v, want %v", tt.err, isUnique, tt.wantUnique)
-			}
-
-			var driverErr *sqlite.Error
-			if tt.wantUnique && !errors.As(got, &driverErr) {
-				t.Fatalf("wrapUnique(%v) = %v, want a *sqlite.Error still reachable via errors.As", tt.err, got)
-			}
+			got := wrapUnique(tt.args.err)
+			tt.assertResult(t, tt.args.err, got)
 		})
 	}
 }
@@ -271,40 +291,53 @@ func TestWrapUnique(t *testing.T) {
 // TestEnsureDatabase covers the one thing it promises: the parent directory exists afterwards. The
 // database file itself is the driver's job, on first connection.
 func TestEnsureDatabase(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name    string
-		setup   func(t *testing.T, tmp string)
-		path    func(tmp string) string
-		wantErr bool
+		name      string
+		setup     func(t *testing.T, tmp string)
+		path      func(tmp string) string
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "a missing parent directory is created",
 			path: func(tmp string) string { return filepath.Join(tmp, "data", "nested", "app.db") },
+			assertErr: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
 		},
 		{
 			name: "an existing parent directory is left alone",
 			path: func(tmp string) string { return filepath.Join(tmp, "app.db") },
+			assertErr: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
 		},
 		{
 			name: "a bare filename has no directory to create",
 			path: func(tmp string) string { return "app.db" },
+			assertErr: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
 		},
 		{
 			name: "a file where the parent directory should be is an error",
 			setup: func(t *testing.T, tmp string) {
 				t.Helper()
 
-				if err := os.WriteFile(filepath.Join(tmp, "data"), nil, 0o600); err != nil {
-					t.Fatalf("writing the blocking file: %v", err)
-				}
+				require.NoError(t, os.WriteFile(filepath.Join(tmp, "data"), nil, 0o600))
 			},
-			path:    func(tmp string) string { return filepath.Join(tmp, "data", "app.db") },
-			wantErr: true,
+			path: func(tmp string) string { return filepath.Join(tmp, "data", "app.db") },
+			assertErr: func(t *testing.T, err error) {
+				require.Error(t, err)
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			tmp := t.TempDir()
 			if tt.setup != nil {
 				tt.setup(t, tmp)
@@ -313,22 +346,15 @@ func TestEnsureDatabase(t *testing.T) {
 			path := tt.path(tmp)
 
 			err := EnsureDatabase(Config{Path: path})
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("EnsureDatabase(%q) error = nil, want an error", path)
-				}
+			tt.assertErr(t, err)
 
+			if err != nil {
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("EnsureDatabase(%q) error = %v", path, err)
-			}
-
 			info, statErr := os.Stat(filepath.Dir(path))
-			if statErr != nil || !info.IsDir() {
-				t.Fatalf("EnsureDatabase(%q): parent directory not usable: %v", path, statErr)
-			}
+			require.NoError(t, statErr)
+			require.True(t, info.IsDir())
 		})
 	}
 }
@@ -337,55 +363,58 @@ func TestEnsureDatabase(t *testing.T) {
 // is applied, and that an unusable path fails at Open rather than at the first query — Open pings,
 // which is where a lazily-connecting driver would otherwise stay silent.
 func TestOpen(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name    string
-		path    func(tmp string) string
-		wantErr bool
+		name      string
+		path      func(tmp string) string
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "creates and opens the database file",
 			path: func(tmp string) string { return filepath.Join(tmp, "app.db") },
+			assertErr: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
 		},
 		{
-			name:    "a directory in place of the file is an error",
-			path:    func(tmp string) string { return tmp },
-			wantErr: true,
+			name: "a directory in place of the file is an error",
+			path: func(tmp string) string { return tmp },
+			assertErr: func(t *testing.T, err error) {
+				require.Error(t, err)
+			},
 		},
 		{
-			name:    "a missing parent directory is an error",
-			path:    func(tmp string) string { return filepath.Join(tmp, "missing", "app.db") },
-			wantErr: true,
+			name: "a missing parent directory is an error",
+			path: func(tmp string) string { return filepath.Join(tmp, "missing", "app.db") },
+			assertErr: func(t *testing.T, err error) {
+				require.Error(t, err)
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			path := tt.path(t.TempDir())
 
-			s, err := Open(Config{Path: path, ConnMaxLifetime: time.Minute})
-			if tt.wantErr {
-				if err == nil {
-					_ = s.Close()
-
-					t.Fatalf("Open(%q) error = nil, want an error", path)
-				}
-
-				return
-			}
+			s, err := Open(Config{
+				Path:            path,
+				ConnMaxLifetime: time.Minute,
+			})
+			tt.assertErr(t, err)
 
 			if err != nil {
-				t.Fatalf("Open(%q) error = %v", path, err)
+				return
 			}
 
 			defer func() { _ = s.Close() }()
 
-			if got := s.Stats().MaxOpenConnections; got != 1 {
-				t.Fatalf("Open(%q) MaxOpenConnections = %d, want 1", path, got)
-			}
+			require.Equal(t, 1, s.Stats().MaxOpenConnections)
 
-			if _, statErr := os.Stat(path); statErr != nil {
-				t.Fatalf("Open(%q) did not create the file: %v", path, statErr)
-			}
+			_, statErr := os.Stat(path)
+			require.NoError(t, statErr, "Open() did not create the file")
 		})
 	}
 }

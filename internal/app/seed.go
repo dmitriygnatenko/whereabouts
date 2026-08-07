@@ -27,7 +27,11 @@ func seedDemoUser(
 		return err
 	}
 
-	_, err = users.Create(ctx, username, hash, entity.UserSettings{})
+	_, err = users.Create(ctx, port.UserCreateRequest{
+		Username:     username,
+		PasswordHash: hash,
+		Settings:     entity.UserSettings{},
+	})
 
 	return err
 }

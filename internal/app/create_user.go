@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"wherewhat/internal/config"
 	domainerror "wherewhat/internal/domain/error"
 	"wherewhat/internal/domain/service/passwordhasher"
-	"wherewhat/internal/domain/usecase/user/createuser"
+	"wherewhat/internal/domain/usecase/user/create"
 	userrepo "wherewhat/internal/repository/user"
 )
 
@@ -46,9 +47,12 @@ func CreateUser(username, password string) error {
 	defer store.Close()
 
 	userRepo := userrepo.New(store)
-	uc := createuser.New(userRepo, passwordhasher.New())
+	uc := create.New(userRepo, passwordhasher.New())
 
-	user, err := uc.Execute(ctx, createuser.Input{Username: username, Password: password})
+	user, err := uc.Execute(ctx, create.Input{
+		Username: username,
+		Password: password,
+	})
 	if err != nil {
 		var conflict *domainerror.ConflictError
 		if errors.As(err, &conflict) {
@@ -58,7 +62,7 @@ func CreateUser(username, password string) error {
 		return err
 	}
 
-	fmt.Printf("created user %q (id=%d)\n", user.Username, user.ID)
+	fmt.Printf("created user %q (id=%d)\n", user.User.Username, user.User.ID)
 
 	return nil
 }

@@ -8,7 +8,9 @@ import (
 )
 
 // CreateSession inserts a session row.
-func (s *Storage) CreateSession(ctx context.Context, session model.Session, createdAt time.Time) error {
+func (s *Storage) CreateSession(
+	ctx context.Context, session model.Session, createdAt time.Time,
+) error {
 	_, err := s.DB.ExecContext(ctx,
 		`INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
 		session.Token, session.UserID, createdAt, session.ExpiresAt,

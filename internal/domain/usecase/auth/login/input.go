@@ -1,10 +1,9 @@
 package login
 
 import (
-	"fmt"
-	"wherewhat/internal/domain/entity"
-
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+
+	"wherewhat/internal/domain/usecase"
 )
 
 // Input is what LoginUser needs to verify credentials and start a session.
@@ -19,17 +18,7 @@ type Input struct {
 // Validate rejects structurally invalid credentials before any repository lookup
 func (i Input) Validate() error {
 	return validation.ValidateStruct(&i,
-		validation.Field(&i.Username,
-			validation.Required.
-				Error("Please enter a username"),
-			validation.Length(entity.MinUsernameLength, 0).
-				Error(fmt.Sprintf("Username must be at least %d characters", entity.MinUsernameLength)),
-		),
-		validation.Field(&i.Password,
-			validation.Required.
-				Error("Please enter a password"),
-			validation.Length(entity.MinPasswordLength, 0).
-				Error(fmt.Sprintf("Password must be at least %d characters", entity.MinPasswordLength)),
-		),
+		validation.Field(&i.Username, usecase.UsernameRules()...),
+		validation.Field(&i.Password, usecase.PasswordRules()...),
 	)
 }

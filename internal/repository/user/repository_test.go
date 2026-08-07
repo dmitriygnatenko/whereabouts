@@ -4,14 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"wherewhat/internal/domain/entity"
 	domainerror "wherewhat/internal/domain/error"
+	"wherewhat/internal/port"
 	"wherewhat/internal/repository/user/mocks"
 	storageError "wherewhat/internal/storage/error"
 	"wherewhat/internal/storage/model"
@@ -41,8 +42,13 @@ func fakeDepth() int       { return gofakeit.Number(0, 10) }
 
 func fakeUserModel() model.User {
 	return model.User{
-		ID: fakeID(), Username: fakeUsername(), PasswordHash: fakeHash(),
-		Settings: model.UserSettings{Language: fakeLang(), LocationFilterDepth: fakeDepth()},
+		ID:           fakeID(),
+		Username:     fakeUsername(),
+		PasswordHash: fakeHash(),
+		Settings: model.UserSettings{
+			Language:            fakeLang(),
+			LocationFilterDepth: fakeDepth(),
+		},
 	}
 }
 
@@ -52,16 +58,28 @@ var errStub = errors.New(gofakeit.Sentence())
 // TestRepository_FindByUsername covers the lookup, including the username -> NotFoundError
 // translation.
 func TestRepository_FindByUsername(t *testing.T) {
+	t.Parallel()
+
 	username := fakeUsername()
+
+	type args struct {
+		ctx      context.Context
+		username string
+	}
 
 	tests := []struct {
 		name         string
+		args         args
 		mock         func(m *mocks.MockStorage) entity.User
-		wantErr      error
-		wantNotFound bool
+		assertResult func(t *testing.T, want, got entity.User)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "finds the user",
+			args: args{
+				ctx:      context.Background(),
+				username: username,
+			},
 			mock: func(m *mocks.MockStorage) entity.User {
 				u := fakeUserModel()
 				u.Username = username
@@ -69,73 +87,80 @@ func TestRepository_FindByUsername(t *testing.T) {
 
 				return u.ToEntity()
 			},
+			assertResult: func(t *testing.T, want, got entity.User) { require.Equal(t, want, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an unknown username becomes a NotFoundError",
+			args: args{
+				ctx:      context.Background(),
+				username: username,
+			},
 			mock: func(m *mocks.MockStorage) entity.User {
 				m.EXPECT().FindUserByUsername(context.Background(), username).Return(model.User{}, sql.ErrNoRows)
 
 				return entity.User{}
 			},
-			wantNotFound: true,
+			assertResult: func(t *testing.T, want, got entity.User) {},
+			assertErr: func(t *testing.T, err error) {
+				var notFound *domainerror.NotFoundError
+				require.ErrorAs(t, err, &notFound)
+			},
 		},
 		{
 			name: "a storage error is propagated",
+			args: args{
+				ctx:      context.Background(),
+				username: username,
+			},
 			mock: func(m *mocks.MockStorage) entity.User {
 				m.EXPECT().FindUserByUsername(context.Background(), username).Return(model.User{}, errStub)
 
 				return entity.User{}
 			},
-			wantErr: errStub,
+			assertResult: func(t *testing.T, want, got entity.User) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			want := tt.mock(m)
 
-			got, err := r.FindByUsername(context.Background(), username)
-			if tt.wantNotFound {
-				var notFound *domainerror.NotFoundError
-				if !errors.As(err, &notFound) {
-					t.Fatalf("FindByUsername() error = %v, want *domainerror.NotFoundError", err)
-				}
-
-				return
-			}
-
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("FindByUsername() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("FindByUsername() error = %v", err)
-			}
-
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("FindByUsername() = %+v, want %+v", got, want)
-			}
+			got, err := r.FindByUsername(tt.args.ctx, tt.args.username)
+			tt.assertErr(t, err)
+			tt.assertResult(t, want, got)
 		})
 	}
 }
 
 // TestRepository_FindByID covers the lookup, including the id -> NotFoundError translation.
 func TestRepository_FindByID(t *testing.T) {
+	t.Parallel()
+
 	id := fakeID()
+
+	type args struct {
+		ctx context.Context
+		id  uint64
+	}
 
 	tests := []struct {
 		name         string
+		args         args
 		mock         func(m *mocks.MockStorage) entity.User
-		wantErr      error
-		wantNotFound bool
+		assertResult func(t *testing.T, want, got entity.User)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "finds the user",
+			args: args{
+				ctx: context.Background(),
+				id:  id,
+			},
 			mock: func(m *mocks.MockStorage) entity.User {
 				u := fakeUserModel()
 				u.ID = id
@@ -143,57 +168,52 @@ func TestRepository_FindByID(t *testing.T) {
 
 				return u.ToEntity()
 			},
+			assertResult: func(t *testing.T, want, got entity.User) { require.Equal(t, want, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an unknown id becomes a NotFoundError",
+			args: args{
+				ctx: context.Background(),
+				id:  id,
+			},
 			mock: func(m *mocks.MockStorage) entity.User {
 				m.EXPECT().FindUserByID(context.Background(), id).Return(model.User{}, sql.ErrNoRows)
 
 				return entity.User{}
 			},
-			wantNotFound: true,
+			assertResult: func(t *testing.T, want, got entity.User) {},
+			assertErr: func(t *testing.T, err error) {
+				var notFound *domainerror.NotFoundError
+				require.ErrorAs(t, err, &notFound)
+			},
 		},
 		{
 			name: "a storage error is propagated",
+			args: args{
+				ctx: context.Background(),
+				id:  id,
+			},
 			mock: func(m *mocks.MockStorage) entity.User {
 				m.EXPECT().FindUserByID(context.Background(), id).Return(model.User{}, errStub)
 
 				return entity.User{}
 			},
-			wantErr: errStub,
+			assertResult: func(t *testing.T, want, got entity.User) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			want := tt.mock(m)
 
-			got, err := r.FindByID(context.Background(), id)
-			if tt.wantNotFound {
-				var notFound *domainerror.NotFoundError
-				if !errors.As(err, &notFound) {
-					t.Fatalf("FindByID() error = %v, want *domainerror.NotFoundError", err)
-				}
-
-				return
-			}
-
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("FindByID() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("FindByID() error = %v", err)
-			}
-
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("FindByID() = %+v, want %+v", got, want)
-			}
+			got, err := r.FindByID(tt.args.ctx, tt.args.id)
+			tt.assertErr(t, err)
+			tt.assertResult(t, want, got)
 		})
 	}
 }
@@ -201,14 +221,27 @@ func TestRepository_FindByID(t *testing.T) {
 // TestRepository_Create covers the insert and the username -> ConflictError translation, the one
 // error shape this repository is allowed to recognize.
 func TestRepository_Create(t *testing.T) {
+	t.Parallel()
+
 	username, hash := fakeUsername(), fakeHash()
-	settings := entity.UserSettings{Language: fakeLang(), LocationFilterDepth: fakeDepth()}
+	settings := entity.UserSettings{
+		Language:            fakeLang(),
+		LocationFilterDepth: fakeDepth(),
+	}
+
+	type args struct {
+		ctx      context.Context
+		username string
+		hash     string
+		settings entity.UserSettings
+	}
 
 	type testCase struct {
 		name         string
+		args         args
 		mock         func(m *mocks.MockStorage) uint64
-		wantErr      error
-		wantConflict bool
+		assertResult func(t *testing.T, wantID, got uint64)
+		assertErr    func(t *testing.T, err error)
 	}
 
 	var tests []testCase
@@ -216,6 +249,12 @@ func TestRepository_Create(t *testing.T) {
 	{
 		tests = append(tests, testCase{
 			name: "stores the user and returns its id",
+			args: args{
+				ctx:      context.Background(),
+				username: username,
+				hash:     hash,
+				settings: settings,
+			},
 			mock: func(m *mocks.MockStorage) uint64 {
 				wantID := fakeID()
 				m.EXPECT().
@@ -224,12 +263,20 @@ func TestRepository_Create(t *testing.T) {
 
 				return wantID
 			},
+			assertResult: func(t *testing.T, wantID, got uint64) { require.Equal(t, wantID, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		})
 	}
 
 	{
 		tests = append(tests, testCase{
 			name: "a taken username becomes a ConflictError",
+			args: args{
+				ctx:      context.Background(),
+				username: username,
+				hash:     hash,
+				settings: settings,
+			},
 			mock: func(m *mocks.MockStorage) uint64 {
 				m.EXPECT().
 					CreateUser(context.Background(), username, hash, model.UserSettingsFromEntity(settings)).
@@ -237,13 +284,23 @@ func TestRepository_Create(t *testing.T) {
 
 				return 0
 			},
-			wantConflict: true,
+			assertResult: func(t *testing.T, wantID, got uint64) {},
+			assertErr: func(t *testing.T, err error) {
+				var conflict *domainerror.ConflictError
+				require.ErrorAs(t, err, &conflict)
+			},
 		})
 	}
 
 	{
 		tests = append(tests, testCase{
 			name: "any other storage error is propagated",
+			args: args{
+				ctx:      context.Background(),
+				username: username,
+				hash:     hash,
+				settings: settings,
+			},
 			mock: func(m *mocks.MockStorage) uint64 {
 				m.EXPECT().
 					CreateUser(context.Background(), username, hash, model.UserSettingsFromEntity(settings)).
@@ -251,292 +308,321 @@ func TestRepository_Create(t *testing.T) {
 
 				return 0
 			},
-			wantErr: errStub,
+			assertResult: func(t *testing.T, wantID, got uint64) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		})
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			wantID := tt.mock(m)
 
-			got, err := r.Create(context.Background(), username, hash, settings)
-			if tt.wantConflict {
-				var conflict *domainerror.ConflictError
-				if !errors.As(err, &conflict) {
-					t.Fatalf("Create() error = %v, want *domainerror.ConflictError", err)
-				}
-
-				return
-			}
-
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Create() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("Create() error = %v", err)
-			}
-
-			if got != wantID {
-				t.Fatalf("Create() = %d, want %d", got, wantID)
-			}
+			got, err := r.Create(tt.args.ctx, port.UserCreateRequest{
+				Username: tt.args.username, PasswordHash: tt.args.hash, Settings: tt.args.settings,
+			})
+			tt.assertErr(t, err)
+			tt.assertResult(t, wantID, got)
 		})
 	}
 }
 
 // TestRepository_UpdateUsername covers the rename and the username -> ConflictError translation.
 func TestRepository_UpdateUsername(t *testing.T) {
+	t.Parallel()
+
 	id := fakeID()
 	username := fakeUsername()
 
+	type args struct {
+		ctx      context.Context
+		id       uint64
+		username string
+	}
+
 	tests := []struct {
-		name         string
-		mock         func(m *mocks.MockStorage)
-		wantConflict bool
-		wantErr      error
+		name      string
+		args      args
+		mock      func(m *mocks.MockStorage)
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "renames the user",
+			args: args{
+				ctx:      context.Background(),
+				id:       id,
+				username: username,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUsername(context.Background(), id, username).Return(nil)
 			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a taken username becomes a ConflictError",
+			args: args{
+				ctx:      context.Background(),
+				id:       id,
+				username: username,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUsername(context.Background(), id, username).Return(storageError.UniqueViolationError)
 			},
-			wantConflict: true,
+			assertErr: func(t *testing.T, err error) {
+				var conflict *domainerror.ConflictError
+				require.ErrorAs(t, err, &conflict)
+			},
 		},
 		{
 			name: "any other storage error is propagated",
+			args: args{
+				ctx:      context.Background(),
+				id:       id,
+				username: username,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUsername(context.Background(), id, username).Return(errStub)
 			},
-			wantErr: errStub,
+			assertErr: func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			tt.mock(m)
 
-			err := r.UpdateUsername(context.Background(), id, username)
-			if tt.wantConflict {
-				var conflict *domainerror.ConflictError
-				if !errors.As(err, &conflict) {
-					t.Fatalf("UpdateUsername() error = %v, want *domainerror.ConflictError", err)
-				}
-
-				return
-			}
-
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("UpdateUsername() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("UpdateUsername() error = %v", err)
-			}
+			err := r.UpdateUsername(tt.args.ctx, tt.args.id, tt.args.username)
+			tt.assertErr(t, err)
 		})
 	}
 }
 
 // TestRepository_UpdatePasswordHash covers the plain delegation to storage.
 func TestRepository_UpdatePasswordHash(t *testing.T) {
+	t.Parallel()
+
 	id := fakeID()
 	hash := fakeHash()
 
+	type args struct {
+		ctx  context.Context
+		id   uint64
+		hash string
+	}
+
 	tests := []struct {
-		name    string
-		mock    func(m *mocks.MockStorage)
-		wantErr error
+		name      string
+		args      args
+		mock      func(m *mocks.MockStorage)
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "delegates to storage",
+			args: args{
+				ctx:  context.Background(),
+				id:   id,
+				hash: hash,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUserPasswordHash(context.Background(), id, hash).Return(nil)
 			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a storage error is propagated",
+			args: args{
+				ctx:  context.Background(),
+				id:   id,
+				hash: hash,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUserPasswordHash(context.Background(), id, hash).Return(errStub)
 			},
-			wantErr: errStub,
+			assertErr: func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			tt.mock(m)
 
-			err := r.UpdatePasswordHash(context.Background(), id, hash)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("UpdatePasswordHash() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("UpdatePasswordHash() error = %v", err)
-			}
+			err := r.UpdatePasswordHash(tt.args.ctx, tt.args.id, tt.args.hash)
+			tt.assertErr(t, err)
 		})
 	}
 }
 
 // TestRepository_UpdateLanguage covers the plain delegation to storage.
 func TestRepository_UpdateLanguage(t *testing.T) {
+	t.Parallel()
+
 	id := fakeID()
 	lang := fakeLang()
 
+	type args struct {
+		ctx  context.Context
+		id   uint64
+		lang string
+	}
+
 	tests := []struct {
-		name    string
-		mock    func(m *mocks.MockStorage)
-		wantErr error
+		name      string
+		args      args
+		mock      func(m *mocks.MockStorage)
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "delegates to storage",
+			args: args{
+				ctx:  context.Background(),
+				id:   id,
+				lang: lang,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUserLanguage(context.Background(), id, lang).Return(nil)
 			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a storage error is propagated",
+			args: args{
+				ctx:  context.Background(),
+				id:   id,
+				lang: lang,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUserLanguage(context.Background(), id, lang).Return(errStub)
 			},
-			wantErr: errStub,
+			assertErr: func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			tt.mock(m)
 
-			err := r.UpdateLanguage(context.Background(), id, lang)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("UpdateLanguage() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("UpdateLanguage() error = %v", err)
-			}
+			err := r.UpdateLanguage(tt.args.ctx, tt.args.id, tt.args.lang)
+			tt.assertErr(t, err)
 		})
 	}
 }
 
 // TestRepository_UpdateLocationFilterDepth covers the plain delegation to storage.
 func TestRepository_UpdateLocationFilterDepth(t *testing.T) {
+	t.Parallel()
+
 	id := fakeID()
 	depth := fakeDepth()
 
+	type args struct {
+		ctx   context.Context
+		id    uint64
+		depth int
+	}
+
 	tests := []struct {
-		name    string
-		mock    func(m *mocks.MockStorage)
-		wantErr error
+		name      string
+		args      args
+		mock      func(m *mocks.MockStorage)
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "delegates to storage",
+			args: args{
+				ctx:   context.Background(),
+				id:    id,
+				depth: depth,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUserLocationFilterDepth(context.Background(), id, depth).Return(nil)
 			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a storage error is propagated",
+			args: args{
+				ctx:   context.Background(),
+				id:    id,
+				depth: depth,
+			},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().UpdateUserLocationFilterDepth(context.Background(), id, depth).Return(errStub)
 			},
-			wantErr: errStub,
+			assertErr: func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			tt.mock(m)
 
-			err := r.UpdateLocationFilterDepth(context.Background(), id, depth)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("UpdateLocationFilterDepth() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("UpdateLocationFilterDepth() error = %v", err)
-			}
+			err := r.UpdateLocationFilterDepth(tt.args.ctx, tt.args.id, tt.args.depth)
+			tt.assertErr(t, err)
 		})
 	}
 }
 
 // TestRepository_Count covers the plain delegation to storage.
 func TestRepository_Count(t *testing.T) {
+	t.Parallel()
+
 	want := gofakeit.Number(0, 500)
 
+	type args struct {
+		ctx context.Context
+	}
+
 	tests := []struct {
-		name    string
-		mock    func(m *mocks.MockStorage)
-		want    int
-		wantErr error
+		name         string
+		args         args
+		mock         func(m *mocks.MockStorage)
+		assertResult func(t *testing.T, got int)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "delegates to storage",
+			args: args{ctx: context.Background()},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().CountUsers(context.Background()).Return(want, nil)
 			},
-			want: want,
+			assertResult: func(t *testing.T, got int) { require.Equal(t, want, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a storage error is propagated",
+			args: args{ctx: context.Background()},
 			mock: func(m *mocks.MockStorage) {
 				m.EXPECT().CountUsers(context.Background()).Return(0, errStub)
 			},
-			wantErr: errStub,
+			assertResult: func(t *testing.T, got int) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r, m := newRepo(t)
 			tt.mock(m)
 
-			got, err := r.Count(context.Background())
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Count() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("Count() error = %v", err)
-			}
-
-			if got != tt.want {
-				t.Fatalf("Count() = %d, want %d", got, tt.want)
-			}
+			got, err := r.Count(tt.args.ctx)
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }

@@ -3,8 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,6 +10,7 @@ import (
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/brianvoe/gofakeit/v7"
+	"github.com/stretchr/testify/require"
 
 	"wherewhat/internal/storage/model"
 )
@@ -33,6 +32,8 @@ func placeholdersQuery(n int) string {
 // exactly as the driver hands them over — sorting itself is ORDER BY's job, not this method's, so the
 // mock rows are already in the order the assertions expect.
 func TestListItems(t *testing.T) {
+	t.Parallel()
+
 	query := `SELECT id, title, location_id, notes, updated_at FROM items ORDER BY updated_at DESC`
 
 	type row struct {
@@ -42,7 +43,13 @@ func TestListItems(t *testing.T) {
 	}
 
 	fakeRow := func() row {
-		return row{id: fakeID(), locationID: fakeID(), name: fakeName(), notes: fakeNotes(), updatedAt: fakeTime()}
+		return row{
+			id:         fakeID(),
+			locationID: fakeID(),
+			name:       fakeName(),
+			notes:      fakeNotes(),
+			updatedAt:  fakeTime(),
+		}
 	}
 
 	tests := []struct {
@@ -50,15 +57,33 @@ func TestListItems(t *testing.T) {
 		rows []row
 	}{
 		{name: "an empty result yields no rows"},
-		{name: "a single item", rows: []row{fakeRow()}},
-		{name: "several items are returned in query order", rows: []row{fakeRow(), fakeRow(), fakeRow()}},
+		{
+			name: "a single item",
+			rows: []row{fakeRow()},
+		},
+		{
+			name: "several items are returned in query order",
+			rows: []row{
+				fakeRow(),
+				fakeRow(),
+				fakeRow(),
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 
-			mockRows := sqlmock.NewRows([]string{"id", "title", "location_id", "notes", "updated_at"})
+			mockRows := sqlmock.NewRows([]string{
+				"id",
+				"title",
+				"location_id",
+				"notes",
+				"updated_at",
+			})
 			for _, r := range tt.rows {
 				mockRows.AddRow(r.id, r.name, r.locationID, r.notes, r.updatedAt)
 			}
@@ -66,51 +91,57 @@ func TestListItems(t *testing.T) {
 			mock.ExpectQuery(query).WillReturnRows(mockRows)
 
 			got, err := s.ListItems(context.Background())
-			if err != nil {
-				t.Fatalf("ListItems() error = %v", err)
-			}
-
-			if len(got) != len(tt.rows) {
-				t.Fatalf("ListItems() returned %d rows, want %d", len(got), len(tt.rows))
-			}
+			require.NoError(t, err)
+			require.Len(t, got, len(tt.rows))
 
 			for i, r := range tt.rows {
 				want := model.Item{
-					ID: r.id, Name: r.name, LocationID: r.locationID, Notes: r.notes,
-					UpdatedAt: r.updatedAt.Format(time.RFC3339Nano),
+					ID:         r.id,
+					Name:       r.name,
+					LocationID: r.locationID,
+					Notes:      r.notes,
+					UpdatedAt:  r.updatedAt.Format(time.RFC3339Nano),
 				}
-				if got[i] != want {
-					t.Fatalf("ListItems()[%d] = %+v, want %+v", i, got[i], want)
-				}
+				require.Equal(t, want, got[i])
 			}
 		})
 	}
 
 	t.Run("a driver error is propagated", func(t *testing.T) {
+		t.Parallel()
+
 		s, mock := newMock(t)
 		mock.ExpectQuery(query).WillReturnError(errStub)
 
-		if _, err := s.ListItems(context.Background()); !errors.Is(err, errStub) {
-			t.Fatalf("ListItems() error = %v, want %v", err, errStub)
-		}
+		_, err := s.ListItems(context.Background())
+		require.ErrorIs(t, err, errStub)
 	})
 
 	t.Run("a scan error is propagated", func(t *testing.T) {
+		t.Parallel()
+
 		s, mock := newMock(t)
 		mock.ExpectQuery(query).WillReturnRows(
-			sqlmock.NewRows([]string{"id", "title", "location_id", "notes", "updated_at"}).
+			sqlmock.NewRows([]string{
+				"id",
+				"title",
+				"location_id",
+				"notes",
+				"updated_at",
+			}).
 				AddRow("not-a-uint64", fakeName(), fakeID(), fakeNotes(), fakeTime()),
 		)
 
-		if _, err := s.ListItems(context.Background()); err == nil {
-			t.Fatal("ListItems() error = nil, want the scan failure propagated")
-		}
+		_, err := s.ListItems(context.Background())
+		require.Error(t, err, "want the scan failure propagated")
 	})
 }
 
 // TestFindItemByID covers the single-row lookup, including the timestamp round-trip through
 // database/sql's time.Time -> string conversion.
 func TestFindItemByID(t *testing.T) {
+	t.Parallel()
+
 	query := `SELECT id, title, location_id, notes, updated_at FROM items WHERE id = $1`
 
 	id, locationID := fakeID(), fakeID()
@@ -118,56 +149,61 @@ func TestFindItemByID(t *testing.T) {
 	updatedAt := fakeTime()
 
 	tests := []struct {
-		name    string
-		mock    func(mock sqlmock.Sqlmock)
-		wantErr error
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got model.Item)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "finds the row",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(query).WithArgs(id).WillReturnRows(
-					sqlmock.NewRows([]string{"id", "title", "location_id", "notes", "updated_at"}).
+					sqlmock.NewRows([]string{
+						"id",
+						"title",
+						"location_id",
+						"notes",
+						"updated_at",
+					}).
 						AddRow(id, name, locationID, notes, updatedAt),
 				)
 			},
+			assertResult: func(t *testing.T, got model.Item) {
+				want := model.Item{
+					ID:         id,
+					Name:       name,
+					LocationID: locationID,
+					Notes:      notes,
+					UpdatedAt:  updatedAt.Format(time.RFC3339Nano),
+				}
+				require.Equal(t, want, got)
+			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
-			name:    "an unknown id is sql.ErrNoRows",
-			mock:    func(mock sqlmock.Sqlmock) { mock.ExpectQuery(query).WithArgs(id).WillReturnError(sql.ErrNoRows) },
-			wantErr: sql.ErrNoRows,
+			name:         "an unknown id is sql.ErrNoRows",
+			mock:         func(mock sqlmock.Sqlmock) { mock.ExpectQuery(query).WithArgs(id).WillReturnError(sql.ErrNoRows) },
+			assertResult: func(t *testing.T, got model.Item) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, sql.ErrNoRows) },
 		},
 		{
-			name:    "a driver error is propagated",
-			mock:    func(mock sqlmock.Sqlmock) { mock.ExpectQuery(query).WithArgs(id).WillReturnError(errStub) },
-			wantErr: errStub,
+			name:         "a driver error is propagated",
+			mock:         func(mock sqlmock.Sqlmock) { mock.ExpectQuery(query).WithArgs(id).WillReturnError(errStub) },
+			assertResult: func(t *testing.T, got model.Item) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			got, err := s.FindItemByID(context.Background(), id)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("FindItemByID() error = %v, want %v", err, tt.wantErr)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("FindItemByID() error = %v", err)
-			}
-
-			want := model.Item{
-				ID: id, Name: name, LocationID: locationID, Notes: notes,
-				UpdatedAt: updatedAt.Format(time.RFC3339Nano),
-			}
-			if got != want {
-				t.Fatalf("FindItemByID() = %+v, want %+v", got, want)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
@@ -175,38 +211,72 @@ func TestFindItemByID(t *testing.T) {
 // TestListItemImages covers the batched fetch that keeps the listing from doing one query per item:
 // the photos come back grouped by item id, and an id without photos simply has no entry.
 func TestListItemImages(t *testing.T) {
+	t.Parallel()
+
 	kettle, drill := fakeID(), fakeID()
 	kettlePhoto1, kettlePhoto2, drillPhoto := fakeURL(), fakeURL(), fakeURL()
 
+	type args struct {
+		ctx context.Context
+		ids []uint64
+	}
+
 	tests := []struct {
-		name    string
-		ids     []uint64
-		mock    func(mock sqlmock.Sqlmock)
-		want    map[uint64][]string
-		wantErr bool
+		name         string
+		args         args
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got map[uint64][]string)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "groups the photos by item, in position order",
-			ids:  []uint64{kettle, drill},
+			args: args{
+				ctx: context.Background(),
+				ids: []uint64{
+					kettle,
+					drill,
+				},
+			},
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(placeholdersQuery(2)).WithArgs(kettle, drill).WillReturnRows(
-					sqlmock.NewRows([]string{"item_id", "url"}).
+					sqlmock.NewRows([]string{
+						"item_id",
+						"url",
+					}).
 						AddRow(kettle, kettlePhoto1).
 						AddRow(kettle, kettlePhoto2).
 						AddRow(drill, drillPhoto),
 				)
 			},
-			want: map[uint64][]string{kettle: {kettlePhoto1, kettlePhoto2}, drill: {drillPhoto}},
+			assertResult: func(t *testing.T, got map[uint64][]string) {
+				require.Equal(t, map[uint64][]string{
+					kettle: {
+						kettlePhoto1,
+						kettlePhoto2,
+					},
+					drill: {drillPhoto},
+				}, got)
+			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an id without photos has no entry",
-			ids:  []uint64{drill},
+			args: args{
+				ctx: context.Background(),
+				ids: []uint64{drill},
+			},
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(placeholdersQuery(1)).WithArgs(drill).WillReturnRows(
-					sqlmock.NewRows([]string{"item_id", "url"}),
+					sqlmock.NewRows([]string{
+						"item_id",
+						"url",
+					}),
 				)
 			},
-			want: map[uint64][]string{},
+			assertResult: func(t *testing.T, got map[uint64][]string) {
+				require.Equal(t, map[uint64][]string{}, got)
+			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			// Postgres, like MySQL, rejects "IN ()" as a syntax error rather than treating it as an empty
@@ -215,55 +285,50 @@ func TestListItemImages(t *testing.T) {
 			// short-circuits before ever getting here — this case pins that the adapter still just
 			// propagates whatever the driver says about it, rather than silently special-casing it.
 			name: "no ids at all propagates the driver's rejection of IN ()",
+			args: args{ctx: context.Background()},
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(placeholdersQuery(0)).WillReturnError(pgErr("42601")) // syntax_error
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, got map[uint64][]string) {},
+			assertErr:    func(t *testing.T, err error) { require.Error(t, err) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
-			got, err := s.ListItemImages(context.Background(), tt.ids)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("ListItemImages() error = nil, want an error")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("ListItemImages() error = %v", err)
-			}
-
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("ListItemImages() = %v, want %v", got, tt.want)
-			}
+			got, err := s.ListItemImages(tt.args.ctx, tt.args.ids)
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
 
 // TestItemImageURLs covers the single-item fetch, whose whole job is the position order.
 func TestItemImageURLs(t *testing.T) {
+	t.Parallel()
+
 	query := `SELECT url FROM item_images WHERE item_id = $1 ORDER BY position`
 	itemID := fakeID()
 	url1, url2 := fakeURL(), fakeURL()
 
 	tests := []struct {
-		name    string
-		mock    func(mock sqlmock.Sqlmock)
-		want    []string
-		wantErr bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got []string)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "an item without photos",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(query).WithArgs(itemID).WillReturnRows(sqlmock.NewRows([]string{"url"}))
 			},
+			assertResult: func(t *testing.T, got []string) { require.Empty(t, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "photos come back in the order the query returns them",
@@ -272,38 +337,34 @@ func TestItemImageURLs(t *testing.T) {
 					sqlmock.NewRows([]string{"url"}).AddRow(url1).AddRow(url2),
 				)
 			},
-			want: []string{url1, url2},
+			assertResult: func(t *testing.T, got []string) {
+				require.Equal(t, []string{
+					url1,
+					url2,
+				}, got)
+			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a driver error is propagated",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(query).WithArgs(itemID).WillReturnError(errStub)
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, got []string) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			got, err := s.ItemImageURLs(context.Background(), itemID)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("ItemImageURLs() error = %v, want %v", err, errStub)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("ItemImageURLs() error = %v", err)
-			}
-
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("ItemImageURLs() = %v, want %v", got, tt.want)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }
@@ -312,6 +373,8 @@ func TestItemImageURLs(t *testing.T) {
 // the location reference can produce — a driver-reported foreign key violation, simulated here rather
 // than enforced by a real server.
 func TestCreateItem(t *testing.T) {
+	t.Parallel()
+
 	query := `INSERT INTO items (title, location_id, notes, created_at, updated_at)` +
 		` VALUES ($1, $2, $3, $4, $5) RETURNING id`
 
@@ -321,9 +384,10 @@ func TestCreateItem(t *testing.T) {
 	wantID := fakeID()
 
 	tests := []struct {
-		name    string
-		mock    func(mock sqlmock.Sqlmock)
-		wantErr bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got uint64)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "stores the item and returns its id",
@@ -331,6 +395,8 @@ func TestCreateItem(t *testing.T) {
 				mock.ExpectQuery(query).WithArgs(name, locationID, notes, now, now).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(wantID))
 			},
+			assertResult: func(t *testing.T, got uint64) { require.Equal(t, wantID, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an unknown location surfaces the driver's foreign key error",
@@ -338,31 +404,21 @@ func TestCreateItem(t *testing.T) {
 				mock.ExpectQuery(query).WithArgs(name, locationID, notes, now, now).
 					WillReturnError(pgErr(pgForeignKeyViolation))
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, got uint64) {},
+			assertErr:    func(t *testing.T, err error) { require.Error(t, err) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			id, err := s.CreateItem(context.Background(), name, notes, locationID, now)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("CreateItem() error = nil, want the driver's constraint error propagated")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("CreateItem() error = %v", err)
-			}
-
-			if id != wantID {
-				t.Fatalf("CreateItem() = %d, want %d", id, wantID)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, id)
 		})
 	}
 }
@@ -370,6 +426,8 @@ func TestCreateItem(t *testing.T) {
 // TestUpdateItem covers the edit: every column the form can change is bound into the UPDATE, the
 // affected-rows count decides "found", and a move to an unknown location surfaces the driver's error.
 func TestUpdateItem(t *testing.T) {
+	t.Parallel()
+
 	query := `UPDATE items SET title = $1, location_id = $2, notes = $3, updated_at = $4 WHERE id = $5`
 
 	id, locationID := fakeID(), fakeID()
@@ -377,10 +435,10 @@ func TestUpdateItem(t *testing.T) {
 	updatedAt := fakeTime()
 
 	tests := []struct {
-		name      string
-		mock      func(mock sqlmock.Sqlmock)
-		wantFound bool
-		wantErr   bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, found bool)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "rewrites the row",
@@ -388,7 +446,8 @@ func TestUpdateItem(t *testing.T) {
 				mock.ExpectExec(query).WithArgs(name, locationID, notes, updatedAt, id).
 					WillReturnResult(sqlmock.NewResult(0, 1))
 			},
-			wantFound: true,
+			assertResult: func(t *testing.T, found bool) { require.True(t, found) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an unknown id reports not found",
@@ -396,6 +455,8 @@ func TestUpdateItem(t *testing.T) {
 				mock.ExpectExec(query).WithArgs(name, locationID, notes, updatedAt, id).
 					WillReturnResult(sqlmock.NewResult(0, 0))
 			},
+			assertResult: func(t *testing.T, found bool) { require.False(t, found) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a move to an unknown location surfaces the driver's foreign key error",
@@ -403,31 +464,21 @@ func TestUpdateItem(t *testing.T) {
 				mock.ExpectExec(query).WithArgs(name, locationID, notes, updatedAt, id).
 					WillReturnError(pgErr(pgForeignKeyViolation))
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, found bool) {},
+			assertErr:    func(t *testing.T, err error) { require.Error(t, err) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			found, err := s.UpdateItem(context.Background(), id, name, notes, locationID, updatedAt)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("UpdateItem() error = nil, want the driver's constraint error propagated")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("UpdateItem() error = %v", err)
-			}
-
-			if found != tt.wantFound {
-				t.Fatalf("UpdateItem() = %v, want %v", found, tt.wantFound)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, found)
 		})
 	}
 }
@@ -436,17 +487,22 @@ func TestUpdateItem(t *testing.T) {
 // success, and — this is the point of using a transaction at all — a rollback the moment any
 // statement inside it fails, whether that's the delete or one of the inserts.
 func TestReplaceItemImages(t *testing.T) {
+	t.Parallel()
+
 	itemID := fakeID()
 
 	tests := []struct {
-		name    string
-		urls    []string
-		mock    func(mock sqlmock.Sqlmock, urls []string)
-		wantErr bool
+		name      string
+		urls      []string
+		mock      func(mock sqlmock.Sqlmock, urls []string)
+		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "sets the photos and commits",
-			urls: []string{fakeURL(), fakeURL()},
+			urls: []string{
+				fakeURL(),
+				fakeURL(),
+			},
 			mock: func(mock sqlmock.Sqlmock, urls []string) {
 				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM item_images WHERE item_id = $1`).
@@ -459,6 +515,7 @@ func TestReplaceItemImages(t *testing.T) {
 
 				mock.ExpectCommit()
 			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an empty list still deletes the old photos and commits",
@@ -468,6 +525,7 @@ func TestReplaceItemImages(t *testing.T) {
 					WithArgs(itemID).WillReturnResult(sqlmock.NewResult(0, 0))
 				mock.ExpectCommit()
 			},
+			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a failed delete rolls back instead of committing",
@@ -477,11 +535,14 @@ func TestReplaceItemImages(t *testing.T) {
 					WithArgs(itemID).WillReturnError(errStub)
 				mock.ExpectRollback()
 			},
-			wantErr: true,
+			assertErr: func(t *testing.T, err error) { require.Error(t, err) },
 		},
 		{
 			name: "a rejected insert rolls back the delete along with it",
-			urls: []string{fakeURL(), fakeURL()},
+			urls: []string{
+				fakeURL(),
+				fakeURL(),
+			},
 			mock: func(mock sqlmock.Sqlmock, urls []string) {
 				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM item_images WHERE item_id = $1`).
@@ -490,27 +551,19 @@ func TestReplaceItemImages(t *testing.T) {
 					WithArgs(itemID, urls[0], 0).WillReturnError(pgErr(pgForeignKeyViolation))
 				mock.ExpectRollback()
 			},
-			wantErr: true,
+			assertErr: func(t *testing.T, err error) { require.Error(t, err) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock, tt.urls)
 
 			err := s.ReplaceItemImages(context.Background(), itemID, tt.urls)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("ReplaceItemImages() error = nil, want an error")
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("ReplaceItemImages() error = %v", err)
-			}
+			tt.assertErr(t, err)
 		})
 	}
 }
@@ -519,71 +572,68 @@ func TestReplaceItemImages(t *testing.T) {
 // propagated untouched. Whether the item's photos actually cascade away is the schema's job (see
 // migrate.go's ON DELETE CASCADE), not something a mock can confirm.
 func TestDeleteItem(t *testing.T) {
+	t.Parallel()
+
 	query := `DELETE FROM items WHERE id = $1`
 	id := fakeID()
 
 	tests := []struct {
-		name      string
-		mock      func(mock sqlmock.Sqlmock)
-		wantFound bool
-		wantErr   bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, found bool)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "deletes the row",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(query).WithArgs(id).WillReturnResult(sqlmock.NewResult(0, 1))
 			},
-			wantFound: true,
+			assertResult: func(t *testing.T, found bool) { require.True(t, found) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "an unknown id reports not found",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(query).WithArgs(id).WillReturnResult(sqlmock.NewResult(0, 0))
 			},
+			assertResult: func(t *testing.T, found bool) { require.False(t, found) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
-			name:    "a driver error is propagated",
-			mock:    func(mock sqlmock.Sqlmock) { mock.ExpectExec(query).WithArgs(id).WillReturnError(errStub) },
-			wantErr: true,
+			name:         "a driver error is propagated",
+			mock:         func(mock sqlmock.Sqlmock) { mock.ExpectExec(query).WithArgs(id).WillReturnError(errStub) },
+			assertResult: func(t *testing.T, found bool) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			found, err := s.DeleteItem(context.Background(), id)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("DeleteItem() error = %v, want %v", err, errStub)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("DeleteItem() error = %v", err)
-			}
-
-			if found != tt.wantFound {
-				t.Fatalf("DeleteItem() = %v, want %v", found, tt.wantFound)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, found)
 		})
 	}
 }
 
 // TestCountItemsByLocation covers the count that decides whether a location may be deleted.
 func TestCountItemsByLocation(t *testing.T) {
+	t.Parallel()
+
 	query := `SELECT COUNT(*) FROM items WHERE location_id = $1`
 	locationID := fakeID()
 	want := gofakeit.Number(0, 500)
 
 	tests := []struct {
-		name    string
-		mock    func(mock sqlmock.Sqlmock)
-		want    int
-		wantErr bool
+		name         string
+		mock         func(mock sqlmock.Sqlmock)
+		assertResult func(t *testing.T, got int)
+		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "counts the items in the location",
@@ -592,38 +642,29 @@ func TestCountItemsByLocation(t *testing.T) {
 					sqlmock.NewRows([]string{"count"}).AddRow(want),
 				)
 			},
-			want: want,
+			assertResult: func(t *testing.T, got int) { require.Equal(t, want, got) },
+			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "a driver error is propagated",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(query).WithArgs(locationID).WillReturnError(errStub)
 			},
-			wantErr: true,
+			assertResult: func(t *testing.T, got int) {},
+			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			s, mock := newMock(t)
 			tt.mock(mock)
 
 			got, err := s.CountItemsByLocation(context.Background(), locationID)
-			if tt.wantErr {
-				if !errors.Is(err, errStub) {
-					t.Fatalf("CountItemsByLocation() error = %v, want %v", err, errStub)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("CountItemsByLocation() error = %v", err)
-			}
-
-			if got != tt.want {
-				t.Fatalf("CountItemsByLocation() = %d, want %d", got, tt.want)
-			}
+			tt.assertErr(t, err)
+			tt.assertResult(t, got)
 		})
 	}
 }

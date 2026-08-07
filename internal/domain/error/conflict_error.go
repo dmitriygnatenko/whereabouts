@@ -1,5 +1,7 @@
 package error
 
+import "errors"
+
 // ConflictError signals a request that can't be applied because of the current state of the data
 // (duplicate username, location still in use, ...). Maps to 409 Conflict.
 type ConflictError struct {
@@ -7,6 +9,10 @@ type ConflictError struct {
 }
 
 // Error implements the error interface.
-func (e *ConflictError) Error() string {
+func (e ConflictError) Error() string {
 	return e.Message
+}
+
+func IsConflictError(err error) bool {
+	return errors.Is(err, ConflictError{})
 }

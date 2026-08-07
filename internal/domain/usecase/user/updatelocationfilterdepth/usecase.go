@@ -5,9 +5,7 @@ package updatelocationfilterdepth
 import (
 	"context"
 	"errors"
-	"wherewhat/internal/domain/entity"
-
-	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"log/slog"
 
 	domainerror "wherewhat/internal/domain/error"
 	"wherewhat/internal/port"
@@ -15,30 +13,47 @@ import (
 
 // UseCase implements UpdateLocationFilterDepth.
 type UseCase struct {
-	Users port.UserRepository
+	userRepository port.UserRepository
 }
 
 // New builds a UseCase from its dependencies.
-func New(users port.UserRepository) *UseCase {
-	return &UseCase{Users: users}
+func New(
+	userRepository port.UserRepository,
+) *UseCase {
+	return &UseCase{
+		userRepository: userRepository,
+	}
 }
 
 // Execute validates and saves the signed-in user's location-filter-depth preference.
-func (uc *UseCase) Execute(ctx context.Context, in Input) (Output, error) {
-	// Min(0): 0 itself is the zero value, so ozzo treats it as "empty" and skips the check — which is
-	// fine, 0 ("no limit") is valid anyway. Any negative depth is not empty and gets rejected.
-	if err := validation.Validate(in.Depth,
-		validation.Min(0).Error("Location filter depth must be 0 (show all) or at least 1"),
+func (uc *UseCase) Execute(
+	ctx context.Context,
+	input Input,
+) (Output, error) {
+	if err := input.Validate(); err != nil {
+		slog.InfoContext(ctx, "update location filter depth: validation", "error", err)
+
+		return Output{}, domainerror.ToValidationError(err)
+	}
+
+	if err := uc.userRepository.UpdateLocationFilterDepth(
+		ctx,
+		input.User.ID,
+		input.Depth,
 	); err != nil {
-		return entity.PublicUser{}, &domainerror.ValidationError{Message: err.Error()}
+		slog.ErrorContext(
+			ctx,
+			"update location filter depth: save",
+			"user_id", input.User.ID, "error", err,
+		)
+
+		return Output{}, errors.New("Failed to save location filter depth")
 	}
 
-	if err := uc.Users.UpdateLocationFilterDepth(ctx, in.User.ID, in.Depth); err != nil {
-		return entity.PublicUser{}, errors.New("Failed to save location filter depth")
-	}
+	updated := input.User
+	updated.LocationFilterDepth = input.Depth
 
-	updated := in.User
-	updated.LocationFilterDepth = in.Depth
-
-	return updated, nil
+	return Output{
+		User: updated,
+	}, nil
 }
