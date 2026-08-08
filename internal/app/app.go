@@ -5,11 +5,10 @@ package app
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
 	"time"
 
 	"wherewhat"
@@ -40,23 +39,29 @@ import (
 	userrepo "wherewhat/internal/repository/user"
 )
 
-// Main is the CLI entry point: it parses flags and either creates a user (-create-user) and exits,
-// or starts the server — so cmd/whereabouts/main.go can stay a thin wrapper around it.
+// Main is the CLI entry point: "create-user" is a subcommand that creates an account and exits,
+// without starting the server; anything else starts the server — so cmd/whereabouts/main.go can stay
+// a thin wrapper around it.
 func Main() error {
-	createUser := flag.Bool("create-user", false, "create a new user with -username/-password and exit")
-	username := flag.String("username", "", "username for -create-user")
-	password := flag.String("password", "", "password for -create-user")
-	flag.Parse()
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "create-user":
+			return createUserCommand(os.Args[2:])
+		case "-h", "-help", "--help":
+			printUsage()
 
-	if *createUser {
-		if *username == "" || *password == "" {
-			return errors.New("-create-user requires -username and -password")
+			return nil
 		}
-
-		return CreateUser(*username, *password)
 	}
 
 	return Run()
+}
+
+// printUsage documents the CLI's one subcommand; everything else just starts the server.
+func printUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("  whereabouts                                        start the server")
+	fmt.Println("  whereabouts create-user -username=U -password=P    create an account and exit")
 }
 
 // Run loads configuration, opens storage, wires up the use cases and HTTP server, and blocks
@@ -116,7 +121,12 @@ func Run() error {
 	imgStore := filesystem.NewStorage()
 	imgProc := imageprocessor.New()
 
-	if err := seedDemoUser(ctx, userRepo, hasher, appCfg.DemoUsername, appCfg.DemoPassword); err != nil {
+	if err := seedDemoUser(ctx, seedDemoUserRequest{
+		Users:    userRepo,
+		Hasher:   hasher,
+		Username: appCfg.DemoUsername,
+		Password: appCfg.DemoPassword,
+	}); err != nil {
 		return fmt.Errorf("failed to seed the demo user: %w", err)
 	}
 
