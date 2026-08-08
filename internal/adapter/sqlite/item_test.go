@@ -631,7 +631,7 @@ func TestDeleteItem(t *testing.T) {
 }
 
 // TestCountItemsByLocation covers the count that decides whether a location may be deleted.
-func TestCountItemsByLocation(t *testing.T) {
+func TestCountItemsByLocation(t *testing.T) { //nolint:dupl // mirrors TestCountLocationChildren for a different table
 	t.Parallel()
 
 	query := `SELECT COUNT(*) FROM items WHERE location_id = ?`

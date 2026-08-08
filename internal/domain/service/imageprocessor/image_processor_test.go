@@ -182,7 +182,7 @@ func TestMaybeResizeWithinBounds(t *testing.T) {
 
 	img := image.NewRGBA(image.Rect(0, 0, 800, 600))
 
-	got := maybeResize(img, 1600)
+	got := maybeResize(img)
 
 	b := got.Bounds()
 	require.Equal(t, 800, b.Dx())
@@ -196,7 +196,7 @@ func TestMaybeResizeWideImage(t *testing.T) {
 
 	img := image.NewRGBA(image.Rect(0, 0, 3200, 1600))
 
-	got := maybeResize(img, 1600)
+	got := maybeResize(img)
 
 	b := got.Bounds()
 	require.Equal(t, 1600, b.Dx())
@@ -210,7 +210,7 @@ func TestMaybeResizeTallImage(t *testing.T) {
 
 	img := image.NewRGBA(image.Rect(0, 0, 1600, 3200))
 
-	got := maybeResize(img, 1600)
+	got := maybeResize(img)
 
 	b := got.Bounds()
 	require.Equal(t, 1600, b.Dy())
@@ -247,7 +247,7 @@ func TestMaybeResizeExtremeAspectRatioClampsToOnePixel(t *testing.T) {
 
 			img := image.NewRGBA(image.Rect(0, 0, tt.w, tt.h))
 
-			got := maybeResize(img, 1600)
+			got := maybeResize(img)
 
 			b := got.Bounds()
 			if tt.checkW {
@@ -424,7 +424,7 @@ func TestClamp255(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, clamp255(tt.in))
+			require.InDelta(t, tt.want, clamp255(tt.in), 0)
 		})
 	}
 }
@@ -435,6 +435,7 @@ func TestEncodeJPEGWithBudgetFitsWithinBudget(t *testing.T) {
 	t.Parallel()
 
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+
 	for y := range 100 {
 		for x := range 100 {
 			img.Set(x, y, color.RGBA{
@@ -459,6 +460,7 @@ func TestEncodeJPEGWithBudgetStepsQualityDown(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 300, 300))
 
 	seed := uint32(12345)
+
 	for y := range 300 {
 		for x := range 300 {
 			seed = seed*1664525 + 1013904223
@@ -492,6 +494,7 @@ func solidJPEG(t *testing.T, w, h, quality int) []byte {
 	t.Helper()
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
+
 	for y := range h {
 		for x := range w {
 			img.Set(x, y, color.RGBA{
@@ -518,6 +521,7 @@ func noisyJPEG(t *testing.T, w, h, quality int) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 
 	seed := uint32(12345)
+
 	for y := range h {
 		for x := range w {
 			seed = seed*1664525 + 1013904223
@@ -543,6 +547,7 @@ func gradientPNG(t *testing.T, w, h int) []byte {
 	t.Helper()
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
+
 	for y := range h {
 		for x := range w {
 			img.Set(x, y, color.RGBA{

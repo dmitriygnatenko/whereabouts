@@ -576,6 +576,7 @@ func TestRepository_Delete(t *testing.T) {
 			fakeURL(),
 			fakeURL(),
 		}
+
 		tests = append(tests, testCase{
 			name: "deletes the item and returns the photo urls it owned",
 			args: args{
@@ -615,6 +616,7 @@ func TestRepository_Delete(t *testing.T) {
 
 	{
 		urls := []string{fakeURL()}
+
 		tests = append(tests, testCase{
 			name: "an unknown id reports not found, with no urls",
 			args: args{

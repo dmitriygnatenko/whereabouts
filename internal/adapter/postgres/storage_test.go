@@ -192,7 +192,7 @@ func TestWrapUnique(t *testing.T) {
 			name: "nil passes through",
 			args: args{err: nil},
 			assertResult: func(t *testing.T, in error, got error) {
-				require.Nil(t, got)
+				require.NoError(t, got)
 			},
 		},
 		{
@@ -200,7 +200,7 @@ func TestWrapUnique(t *testing.T) {
 			args: args{err: errStub},
 			assertResult: func(t *testing.T, in error, got error) {
 				require.ErrorIs(t, got, in)
-				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+				require.NotErrorIs(t, got, storageError.UniqueViolationError)
 			},
 		},
 		{
@@ -208,7 +208,7 @@ func TestWrapUnique(t *testing.T) {
 			args: args{err: fkViolation},
 			assertResult: func(t *testing.T, in error, got error) {
 				require.ErrorIs(t, got, in)
-				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+				require.NotErrorIs(t, got, storageError.UniqueViolationError)
 			},
 		},
 		{
@@ -250,7 +250,11 @@ func TestEnsureDatabase(t *testing.T) {
 	}{
 		{name: "a plain identifier passes the validator", dbName: gofakeit.Word() + "_" + gofakeit.LetterN(6)},
 		{name: "a name with a space is rejected", dbName: gofakeit.Word() + " " + gofakeit.Word(), wantRejectedName: true},
-		{name: "a name with a semicolon is rejected", dbName: gofakeit.Word() + "; DROP DATABASE postgres", wantRejectedName: true},
+		{
+			name:             "a name with a semicolon is rejected",
+			dbName:           gofakeit.Word() + "; DROP DATABASE postgres",
+			wantRejectedName: true,
+		},
 		{name: "a name with a quote is rejected", dbName: `"` + gofakeit.Word(), wantRejectedName: true},
 		{name: "an empty name is rejected", dbName: "", wantRejectedName: true},
 	}

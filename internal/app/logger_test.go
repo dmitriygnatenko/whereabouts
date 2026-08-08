@@ -165,11 +165,12 @@ func TestInitLogger_Formats(t *testing.T) {
 	require.NoError(t, err)
 
 	var record map[string]any
+
 	require.NoError(t, json.Unmarshal(bytes.TrimSpace(contents), &record), "log file is not JSON")
 
 	require.Equal(t, "hello", record["msg"])
 	require.Equal(t, "INFO", record["level"])
-	require.Equal(t, float64(7), record["user_id"])
+	require.InDelta(t, float64(7), record["user_id"], 0)
 }
 
 // TestInitLogger_PerDestinationLevels is the point of the whole arrangement, checked through the

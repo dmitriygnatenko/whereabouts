@@ -40,6 +40,7 @@ func openStorage(ctx context.Context, cfg config.DBConfig) (storage, error) {
 			Path:            cfg.SQLitePath,
 			ConnMaxLifetime: cfg.ConnMaxLifetime,
 		}
+
 		slog.InfoContext(
 			ctx,
 			"opening database",

@@ -41,7 +41,7 @@ func mustJSON(v any) []byte {
 // constraint, see TestCreateUser) case-sensitive. That behavior belongs to the driver, not this
 // adapter's Go code, so a mock — which just returns whatever row it's told to — can't exercise it;
 // it'd need an integration test against a real database file.
-func TestFindUserByUsername(t *testing.T) {
+func TestFindUserByUsername(t *testing.T) { //nolint:dupl // mirrors TestFindUserByID for a different query
 	t.Parallel()
 
 	query := `SELECT id, username, settings, password_hash FROM users WHERE username = ?`
@@ -81,8 +81,10 @@ func TestFindUserByUsername(t *testing.T) {
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
-			name:         "an unknown username is sql.ErrNoRows",
-			mock:         func(mock sqlmock.Sqlmock) { mock.ExpectQuery(query).WithArgs(username).WillReturnError(sql.ErrNoRows) },
+			name: "an unknown username is sql.ErrNoRows",
+			mock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(query).WithArgs(username).WillReturnError(sql.ErrNoRows)
+			},
 			assertResult: func(t *testing.T, got model.User) {},
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, sql.ErrNoRows) },
 		},
@@ -110,7 +112,7 @@ func TestFindUserByUsername(t *testing.T) {
 
 // TestFindUserByID covers the same lookup by primary key, which is what every authenticated request
 // goes through.
-func TestFindUserByID(t *testing.T) {
+func TestFindUserByID(t *testing.T) { //nolint:dupl // mirrors TestFindUserByUsername for a different query
 	t.Parallel()
 
 	query := `SELECT id, username, settings, password_hash FROM users WHERE id = ?`
