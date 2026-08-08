@@ -19,6 +19,7 @@ func TestNewToken(t *testing.T) {
 	require.NoError(t, err)
 
 	const wantLen = 64 // 32 bytes, hex-encoded
+
 	require.Len(t, token, wantLen)
 
 	_, err = hex.DecodeString(token)

@@ -57,7 +57,7 @@ var errStub = errors.New(gofakeit.Sentence())
 
 // TestRepository_FindByUsername covers the lookup, including the username -> NotFoundError
 // translation.
-func TestRepository_FindByUsername(t *testing.T) {
+func TestRepository_FindByUsername(t *testing.T) { //nolint:dupl // mirrors TestRepository_FindByID
 	t.Parallel()
 
 	username := fakeUsername()
@@ -138,7 +138,7 @@ func TestRepository_FindByUsername(t *testing.T) {
 }
 
 // TestRepository_FindByID covers the lookup, including the id -> NotFoundError translation.
-func TestRepository_FindByID(t *testing.T) {
+func TestRepository_FindByID(t *testing.T) { //nolint:dupl // mirrors TestRepository_FindByUsername
 	t.Parallel()
 
 	id := fakeID()
@@ -403,7 +403,7 @@ func TestRepository_UpdateUsername(t *testing.T) {
 }
 
 // TestRepository_UpdatePasswordHash covers the plain delegation to storage.
-func TestRepository_UpdatePasswordHash(t *testing.T) {
+func TestRepository_UpdatePasswordHash(t *testing.T) { //nolint:dupl // mirrors sibling field-update tests
 	t.Parallel()
 
 	id := fakeID()
@@ -461,7 +461,7 @@ func TestRepository_UpdatePasswordHash(t *testing.T) {
 }
 
 // TestRepository_UpdateLanguage covers the plain delegation to storage.
-func TestRepository_UpdateLanguage(t *testing.T) {
+func TestRepository_UpdateLanguage(t *testing.T) { //nolint:dupl // mirrors sibling field-update tests
 	t.Parallel()
 
 	id := fakeID()
@@ -519,7 +519,7 @@ func TestRepository_UpdateLanguage(t *testing.T) {
 }
 
 // TestRepository_UpdateLocationFilterDepth covers the plain delegation to storage.
-func TestRepository_UpdateLocationFilterDepth(t *testing.T) {
+func TestRepository_UpdateLocationFilterDepth(t *testing.T) { //nolint:dupl // mirrors sibling field-update tests
 	t.Parallel()
 
 	id := fakeID()

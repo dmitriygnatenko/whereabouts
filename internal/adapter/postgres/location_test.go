@@ -62,6 +62,7 @@ func TestListLocations(t *testing.T) {
 				"color",
 				"parent_id",
 			})
+
 			for _, loc := range tt.rows {
 				var parentID any
 				if loc.ParentID != nil {
@@ -276,7 +277,7 @@ func TestUpdateLocation(t *testing.T) {
 }
 
 // TestCountLocationChildren covers the nesting count the delete and depth rules are decided on.
-func TestCountLocationChildren(t *testing.T) {
+func TestCountLocationChildren(t *testing.T) { //nolint:dupl // mirrors TestCountItemsByLocation for a different table
 	t.Parallel()
 
 	query := `SELECT COUNT(*) FROM locations WHERE parent_id = $1`

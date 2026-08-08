@@ -246,7 +246,7 @@ func TestWrapUnique(t *testing.T) {
 			name: "nil passes through",
 			args: args{err: nil},
 			assertResult: func(t *testing.T, in error, got error) {
-				require.Nil(t, got)
+				require.NoError(t, got)
 			},
 		},
 		{
@@ -254,7 +254,7 @@ func TestWrapUnique(t *testing.T) {
 			args: args{err: errStub},
 			assertResult: func(t *testing.T, in error, got error) {
 				require.ErrorIs(t, got, in)
-				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+				require.NotErrorIs(t, got, storageError.UniqueViolationError)
 			},
 		},
 		{
@@ -262,7 +262,7 @@ func TestWrapUnique(t *testing.T) {
 			args: args{err: sqliteForeignKeyErr()},
 			assertResult: func(t *testing.T, in error, got error) {
 				require.ErrorIs(t, got, in)
-				require.False(t, errors.Is(got, storageError.UniqueViolationError))
+				require.NotErrorIs(t, got, storageError.UniqueViolationError)
 			},
 		},
 		{

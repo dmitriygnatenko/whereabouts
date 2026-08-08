@@ -25,7 +25,8 @@ func TestHash(t *testing.T) {
 
 	hash2, err := h.Hash(pass)
 	require.NoError(t, err)
-	require.NotEqual(t, hash1, hash2, "Hash() returned the same hash for two calls with the same password, want different salts")
+	require.NotEqual(t, hash1, hash2,
+		"Hash() returned the same hash for two calls with the same password, want different salts")
 }
 
 // TestHashTooLong checks that Hash surfaces bcrypt's error for passwords over

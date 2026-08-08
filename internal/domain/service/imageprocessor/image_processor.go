@@ -51,7 +51,7 @@ func (c *Compressor) Compress(data []byte, mimeType string) (out []byte, ext str
 		return data, extForMime(mimeType), nil //nolint:nilerr // deliberate fallback, see comment above
 	}
 
-	img = maybeResize(img, maxImageDimension)
+	img = maybeResize(img)
 
 	encoded, encErr := encodeJPEGWithBudget(img, maxImageBytes)
 	if encErr != nil {
@@ -107,23 +107,23 @@ func encodeJPEGWithBudget(img image.Image, budget int) ([]byte, error) {
 	return out, nil
 }
 
-// maybeResize shrinks an image, preserving aspect ratio, if either side exceeds maxDim. Returns it
-// unchanged if it already fits.
-func maybeResize(img image.Image, maxDim int) image.Image {
+// maybeResize shrinks an image, preserving aspect ratio, if either side exceeds maxImageDimension.
+// Returns it unchanged if it already fits.
+func maybeResize(img image.Image) image.Image {
 	b := img.Bounds()
 
 	w, h := b.Dx(), b.Dy()
-	if w <= maxDim && h <= maxDim {
+	if w <= maxImageDimension && h <= maxImageDimension {
 		return img
 	}
 
 	var newW, newH int
 	if w >= h {
-		newW = maxDim
-		newH = int(float64(h) * float64(maxDim) / float64(w))
+		newW = maxImageDimension
+		newH = int(float64(h) * float64(maxImageDimension) / float64(w))
 	} else {
-		newH = maxDim
-		newW = int(float64(w) * float64(maxDim) / float64(h))
+		newH = maxImageDimension
+		newW = int(float64(w) * float64(maxImageDimension) / float64(h))
 	}
 
 	if newW < 1 {
