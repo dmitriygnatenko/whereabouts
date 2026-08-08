@@ -5,12 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
+	"time"
 
+	"wherewhat/internal/adapter/filesystem"
 	"wherewhat/internal/config"
-	domainerror "wherewhat/internal/domain/error"
+	domainError "wherewhat/internal/domain/error"
 	"wherewhat/internal/domain/service/passwordhasher"
 	"wherewhat/internal/domain/usecase/user/create"
-	userrepo "wherewhat/internal/repository/user"
+	userRepo "wherewhat/internal/repository/user"
 )
 
 // createUserCommand parses create-user's own flags and creates a single account with them. It's a
@@ -36,13 +39,20 @@ func createUserCommand(args []string) error {
 // account with the given credentials, then closes the connection. It's the entry point for
 // `-create-user`.
 func createUser(username, password string) error {
+	time.Local = time.UTC
+
 	config.LoadEnv()
 
 	// Only logging and storage are loaded here: this command never serves HTTP, so with the groups
 	// split it no longer has to satisfy PORT or the other server settings to create an account.
 	logCfg, err := config.LoadLog()
 	if err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
+		return fmt.Errorf("invalid log configuration: %w", err)
+	}
+
+	dbCfg, err := config.LoadDB()
+	if err != nil {
+		return fmt.Errorf("invalid DB configuration: %w", err)
 	}
 
 	closeLog, err := initLogger(logCfg)
@@ -51,11 +61,6 @@ func createUser(username, password string) error {
 	}
 
 	defer closeLog()
-
-	dbCfg, err := config.LoadDB()
-	if err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
-	}
 
 	ctx := context.Background()
 
@@ -66,15 +71,19 @@ func createUser(username, password string) error {
 
 	defer store.Close()
 
-	userRepo := userrepo.New(store)
-	uc := create.New(userRepo, passwordhasher.New())
+	if err = filesystem.EnsureDir(); err != nil {
+		return fmt.Errorf("failed to create the photo storage directory: %w", err)
+	}
+
+	userRepository := userRepo.New(store)
+	uc := create.New(userRepository, passwordhasher.New())
 
 	user, err := uc.Execute(ctx, create.Input{
 		Username: username,
 		Password: password,
 	})
 	if err != nil {
-		var conflict *domainerror.ConflictError
+		var conflict *domainError.ConflictError
 		if errors.As(err, &conflict) {
 			return fmt.Errorf("user %q already exists", username)
 		}
@@ -82,7 +91,10 @@ func createUser(username, password string) error {
 		return err
 	}
 
-	fmt.Printf("created user %q (id=%d)\n", user.User.Username, user.User.ID)
+	slog.InfoContext(
+		ctx,
+		fmt.Sprintf("created user %q (id=%d)\n", user.User.Username, user.User.ID),
+	)
 
 	return nil
 }
