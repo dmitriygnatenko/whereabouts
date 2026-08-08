@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 
 	"wherewhat/internal/config"
@@ -12,10 +13,29 @@ import (
 	userrepo "wherewhat/internal/repository/user"
 )
 
-// CreateUser opens storage using the normal environment-based configuration and creates a single
+// createUserCommand parses create-user's own flags and creates a single account with them. It's a
+// separate flag.FlagSet, not the top-level flag.CommandLine, so its -username/-password don't leak
+// into (or get confused with) whatever flags the server itself grows in the future.
+func createUserCommand(args []string) error {
+	flags := flag.NewFlagSet("create-user", flag.ExitOnError)
+	username := flags.String("username", "", "username for the new account")
+	password := flags.String("password", "", "password for the new account")
+
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	if *username == "" || *password == "" {
+		return errors.New("create-user requires -username and -password")
+	}
+
+	return createUser(*username, *password)
+}
+
+// createUser opens storage using the normal environment-based configuration and creates a single
 // account with the given credentials, then closes the connection. It's the entry point for
 // `-create-user`.
-func CreateUser(username, password string) error {
+func createUser(username, password string) error {
 	config.LoadEnv()
 
 	// Only logging and storage are loaded here: this command never serves HTTP, so with the groups
