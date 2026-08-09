@@ -6,6 +6,7 @@ package port
 import (
 	"context"
 	"time"
+
 	"wherewhat/internal/domain/entity"
 )
 
@@ -40,13 +41,16 @@ type ItemRepository interface {
 	// Update rewrites the item row. found is false if no row with this id exists.
 	Update(ctx context.Context, req ItemUpdateRequest) (found bool, err error)
 
-	// ReplaceImages swaps an item's photo rows for the given URLs and reports which previously-stored
-	// URLs are no longer referenced, so the caller can delete their files via port.ImageStorage.
-	ReplaceImages(ctx context.Context, itemID uint64, images []string) (removedURLs []string, err error)
+	// ReplaceImages swaps an item's photo rows for the given images and reports which
+	// previously-stored images are no longer referenced, so the caller can delete their files (both
+	// full-size and thumbnail) via port.ImageStorage.
+	ReplaceImages(
+		ctx context.Context, itemID uint64, images []entity.ItemImage,
+	) (removed []entity.ItemImage, err error)
 
-	// Delete removes the item row (photo rows cascade) and reports the photo URLs it used to have, for
+	// Delete removes the item row (photo rows cascade) and reports the photos it used to have, for
 	// file cleanup. found is false if no row with this id existed.
-	Delete(ctx context.Context, id uint64) (removedImageURLs []string, found bool, err error)
+	Delete(ctx context.Context, id uint64) (removedImages []entity.ItemImage, found bool, err error)
 
 	// CountByLocation reports how many items currently live in a location — used to guard location
 	// deletion.

@@ -97,8 +97,12 @@ func (uc *UseCase) Execute(
 		return Output{}, errors.New("Failed to update photos")
 	}
 
-	for _, url := range removed {
-		uc.imageStorage.Delete(url)
+	for _, img := range removed {
+		uc.imageStorage.Delete(img.URL)
+
+		if img.ThumbnailURL != "" {
+			uc.imageStorage.Delete(img.ThumbnailURL)
+		}
 	}
 
 	item, err := uc.itemRepository.GetByID(ctx, input.ID)

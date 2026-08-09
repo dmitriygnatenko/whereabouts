@@ -102,26 +102,26 @@ func (mr *MockStorageMockRecorder) FindItemByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindItemByID", reflect.TypeOf((*MockStorage)(nil).FindItemByID), ctx, id)
 }
 
-// ItemImageURLs mocks base method.
-func (m *MockStorage) ItemImageURLs(ctx context.Context, itemID uint64) ([]string, error) {
+// ItemImages mocks base method.
+func (m *MockStorage) ItemImages(ctx context.Context, itemID uint64) ([]model.ItemImage, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ItemImageURLs", ctx, itemID)
-	ret0, _ := ret[0].([]string)
+	ret := m.ctrl.Call(m, "ItemImages", ctx, itemID)
+	ret0, _ := ret[0].([]model.ItemImage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ItemImageURLs indicates an expected call of ItemImageURLs.
-func (mr *MockStorageMockRecorder) ItemImageURLs(ctx, itemID any) *gomock.Call {
+// ItemImages indicates an expected call of ItemImages.
+func (mr *MockStorageMockRecorder) ItemImages(ctx, itemID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ItemImageURLs", reflect.TypeOf((*MockStorage)(nil).ItemImageURLs), ctx, itemID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ItemImages", reflect.TypeOf((*MockStorage)(nil).ItemImages), ctx, itemID)
 }
 
 // ListItemImages mocks base method.
-func (m *MockStorage) ListItemImages(ctx context.Context, itemIDs []uint64) (map[uint64][]string, error) {
+func (m *MockStorage) ListItemImages(ctx context.Context, itemIDs []uint64) (map[uint64][]model.ItemImage, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListItemImages", ctx, itemIDs)
-	ret0, _ := ret[0].(map[uint64][]string)
+	ret0, _ := ret[0].(map[uint64][]model.ItemImage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -148,17 +148,17 @@ func (mr *MockStorageMockRecorder) ListItems(ctx any) *gomock.Call {
 }
 
 // ReplaceItemImages mocks base method.
-func (m *MockStorage) ReplaceItemImages(ctx context.Context, itemID uint64, urls []string) error {
+func (m *MockStorage) ReplaceItemImages(ctx context.Context, itemID uint64, images []model.ItemImage) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReplaceItemImages", ctx, itemID, urls)
+	ret := m.ctrl.Call(m, "ReplaceItemImages", ctx, itemID, images)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ReplaceItemImages indicates an expected call of ReplaceItemImages.
-func (mr *MockStorageMockRecorder) ReplaceItemImages(ctx, itemID, urls any) *gomock.Call {
+func (mr *MockStorageMockRecorder) ReplaceItemImages(ctx, itemID, images any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceItemImages", reflect.TypeOf((*MockStorage)(nil).ReplaceItemImages), ctx, itemID, urls)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceItemImages", reflect.TypeOf((*MockStorage)(nil).ReplaceItemImages), ctx, itemID, images)
 }
 
 // UpdateItem mocks base method.

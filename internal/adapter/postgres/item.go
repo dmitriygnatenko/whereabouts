@@ -51,7 +51,7 @@ func (s *Storage) FindItemByID(ctx context.Context, id uint64) (model.Item, erro
 // listing.
 func (s *Storage) ListItemImages(
 	ctx context.Context, itemIDs []uint64,
-) (map[uint64][]string, error) {
+) (map[uint64][]model.ItemImage, error) {
 	args := make([]any, len(itemIDs))
 	placeholders := make([]string, len(itemIDs))
 
@@ -63,8 +63,8 @@ func (s *Storage) ListItemImages(
 	// #nosec G202 -- the interpolated text is a run of "$N" placeholders built from len(itemIDs); the ids
 	// themselves are bound as arguments, never spliced into the query.
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT item_id, url FROM item_images WHERE item_id IN (`+strings.Join(placeholders, ", ")+`)`+
-			` ORDER BY item_id, position`,
+		`SELECT item_id, url, thumbnail_url FROM item_images `+
+			`WHERE item_id IN (`+strings.Join(placeholders, ", ")+`) ORDER BY item_id, position`,
 		args...,
 	)
 	if err != nil {
@@ -72,44 +72,46 @@ func (s *Storage) ListItemImages(
 	}
 	defer rows.Close()
 
-	result := make(map[uint64][]string, len(itemIDs))
+	result := make(map[uint64][]model.ItemImage, len(itemIDs))
 
 	for rows.Next() {
-		var itemID uint64
+		var (
+			itemID uint64
+			img    model.ItemImage
+		)
 
-		var url string
-		if err := rows.Scan(&itemID, &url); err != nil {
+		if err := rows.Scan(&itemID, &img.URL, &img.ThumbnailURL); err != nil {
 			return nil, err
 		}
 
-		result[itemID] = append(result[itemID], url)
+		result[itemID] = append(result[itemID], img)
 	}
 
 	return result, rows.Err()
 }
 
-// ItemImageURLs returns the photos stored for one item, in position order.
-func (s *Storage) ItemImageURLs(ctx context.Context, itemID uint64) ([]string, error) {
+// ItemImages returns the photos stored for one item, in position order.
+func (s *Storage) ItemImages(ctx context.Context, itemID uint64) ([]model.ItemImage, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT url FROM item_images WHERE item_id = $1 ORDER BY position`, itemID,
+		`SELECT url, thumbnail_url FROM item_images WHERE item_id = $1 ORDER BY position`, itemID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var urls []string
+	var images []model.ItemImage
 
 	for rows.Next() {
-		var url string
-		if err := rows.Scan(&url); err != nil {
+		var img model.ItemImage
+		if err := rows.Scan(&img.URL, &img.ThumbnailURL); err != nil {
 			return nil, err
 		}
 
-		urls = append(urls, url)
+		images = append(images, img)
 	}
 
-	return urls, rows.Err()
+	return images, rows.Err()
 }
 
 // CreateItem inserts an item row and returns its new id.
@@ -138,9 +140,9 @@ func (s *Storage) UpdateItem(
 	return affected(res)
 }
 
-// ReplaceItemImages swaps an item's photo rows for urls, in one transaction so a failure part-way
+// ReplaceItemImages swaps an item's photo rows for images, in one transaction so a failure part-way
 // through can't leave the item with half a photo set.
-func (s *Storage) ReplaceItemImages(ctx context.Context, itemID uint64, urls []string) error {
+func (s *Storage) ReplaceItemImages(ctx context.Context, itemID uint64, images []model.ItemImage) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -154,9 +156,10 @@ func (s *Storage) ReplaceItemImages(ctx context.Context, itemID uint64, urls []s
 		return err
 	}
 
-	for position, url := range urls {
+	for position, img := range images {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO item_images (item_id, url, position) VALUES ($1, $2, $3)`, itemID, url, position,
+			`INSERT INTO item_images (item_id, url, thumbnail_url, position) VALUES ($1, $2, $3, $4)`,
+			itemID, img.URL, img.ThumbnailURL, position,
 		); err != nil {
 			return err
 		}

@@ -73,10 +73,10 @@ func (mr *MockItemRepositoryMockRecorder) Create(ctx, req any) *gomock.Call {
 }
 
 // Delete mocks base method.
-func (m *MockItemRepository) Delete(ctx context.Context, id uint64) ([]string, bool, error) {
+func (m *MockItemRepository) Delete(ctx context.Context, id uint64) ([]entity.ItemImage, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, id)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]entity.ItemImage)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -119,10 +119,10 @@ func (mr *MockItemRepositoryMockRecorder) List(ctx any) *gomock.Call {
 }
 
 // ReplaceImages mocks base method.
-func (m *MockItemRepository) ReplaceImages(ctx context.Context, itemID uint64, images []string) ([]string, error) {
+func (m *MockItemRepository) ReplaceImages(ctx context.Context, itemID uint64, images []entity.ItemImage) ([]entity.ItemImage, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReplaceImages", ctx, itemID, images)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]entity.ItemImage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

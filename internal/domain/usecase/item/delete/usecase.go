@@ -49,8 +49,12 @@ func (uc *UseCase) Execute(
 		}
 	}
 
-	for _, url := range removed {
-		uc.imageStorage.Delete(url)
+	for _, img := range removed {
+		uc.imageStorage.Delete(img.URL)
+
+		if img.ThumbnailURL != "" {
+			uc.imageStorage.Delete(img.ThumbnailURL)
+		}
 	}
 
 	return nil

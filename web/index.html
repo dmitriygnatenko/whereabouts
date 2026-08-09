@@ -151,7 +151,7 @@
         <div class="item-card" v-for="it in filteredItems" :key="it.id" @click="openEditItem(it)">
           <div class="item-stub" :class="{'has-image': it.images && it.images.length}">
             <template v-if="it.images && it.images.length">
-              <img :src="it.images[0]" @click.stop="openLightbox(it.images, 0)" alt="">
+              <img :src="(it.thumbnails && it.thumbnails[0]) || it.images[0]" @click.stop="openLightbox(it.images, 0)" alt="">
               <span class="image-count-badge" v-if="it.images.length > 1">+{{ it.images.length - 1 }}</span>
             </template>
             <div class="avatar" v-else :style="{background: locationOf(it.locationId).color}">{{ initials(it.name) }}</div>

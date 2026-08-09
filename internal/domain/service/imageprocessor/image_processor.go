@@ -23,6 +23,13 @@ const (
 	jpegQualityStep    = 15
 )
 
+// Thumbnail dimensions/quality — small previews for the things list, not meant to be viewed full
+// screen, so a much smaller size and lower quality than the full photo is fine.
+const (
+	maxThumbnailDimension = 200
+	thumbnailJPEGQuality  = 75
+)
+
 // MaxRequestBytes caps the HTTP body of endpoints that accept photos — protects the server against
 // oversized payloads.
 const MaxRequestBytes = 20 * 1024 * 1024
@@ -59,6 +66,26 @@ func (c *Compressor) Compress(data []byte, mimeType string) (out []byte, ext str
 	}
 
 	return encoded, ".jpg", nil
+}
+
+// Thumbnail produces a small preview (at most maxThumbnailDimension along its longer side) for list
+// views, so they don't have to load full-size photos. Returns an error if the source can't be
+// decoded (e.g. HEIC/WebP) — callers should treat that as "no thumbnail available" and fall back to
+// the full image.
+func (c *Compressor) CompressThumbnail(data []byte, _ string) (out []byte, ext string, err error) {
+	img, _, decErr := image.Decode(bytes.NewReader(data))
+	if decErr != nil {
+		return nil, "", fmt.Errorf("failed to decode image for thumbnail: %w", decErr)
+	}
+
+	thumb := resizeToMax(img, maxThumbnailDimension)
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: thumbnailJPEGQuality}); err != nil {
+		return nil, "", fmt.Errorf("failed to encode thumbnail: %w", err)
+	}
+
+	return buf.Bytes(), ".jpg", nil
 }
 
 // extForMime picks a file extension for formats we don't re-encode to JPEG (see Compress above).
@@ -110,20 +137,26 @@ func encodeJPEGWithBudget(img image.Image, budget int) ([]byte, error) {
 // maybeResize shrinks an image, preserving aspect ratio, if either side exceeds maxImageDimension.
 // Returns it unchanged if it already fits.
 func maybeResize(img image.Image) image.Image {
+	return resizeToMax(img, maxImageDimension)
+}
+
+// resizeToMax shrinks an image, preserving aspect ratio, so neither side exceeds maxDimension.
+// Returns it unchanged if it already fits — never upscales.
+func resizeToMax(img image.Image, maxDimension int) image.Image {
 	b := img.Bounds()
 
 	w, h := b.Dx(), b.Dy()
-	if w <= maxImageDimension && h <= maxImageDimension {
+	if w <= maxDimension && h <= maxDimension {
 		return img
 	}
 
 	var newW, newH int
 	if w >= h {
-		newW = maxImageDimension
-		newH = int(float64(h) * float64(maxImageDimension) / float64(w))
+		newW = maxDimension
+		newH = int(float64(h) * float64(maxDimension) / float64(w))
 	} else {
-		newH = maxImageDimension
-		newW = int(float64(w) * float64(maxImageDimension) / float64(h))
+		newH = maxDimension
+		newW = int(float64(w) * float64(maxDimension) / float64(h))
 	}
 
 	if newW < 1 {

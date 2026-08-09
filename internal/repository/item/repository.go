@@ -28,12 +28,12 @@ type Storage interface {
 	// FindItemByID returns sql.ErrNoRows when no item has this id.
 	FindItemByID(ctx context.Context, id uint64) (model.Item, error)
 
-	// ListItemImages returns the photo URLs of several items at once, keyed by item id and in position
+	// ListItemImages returns the photos of several items at once, keyed by item id and in position
 	// order within each item — one query instead of N. itemIDs must not be empty.
-	ListItemImages(ctx context.Context, itemIDs []uint64) (map[uint64][]string, error)
+	ListItemImages(ctx context.Context, itemIDs []uint64) (map[uint64][]model.ItemImage, error)
 
-	// ItemImageURLs returns the photo URLs stored for one item.
-	ItemImageURLs(ctx context.Context, itemID uint64) ([]string, error)
+	// ItemImages returns the photos stored for one item.
+	ItemImages(ctx context.Context, itemID uint64) ([]model.ItemImage, error)
 
 	// CreateItem inserts an item row and returns its new id.
 	CreateItem(
@@ -45,8 +45,8 @@ type Storage interface {
 		ctx context.Context, id uint64, name, notes string, locationID uint64, now time.Time,
 	) (found bool, err error)
 
-	// ReplaceItemImages atomically swaps an item's photo rows for urls, in the order given.
-	ReplaceItemImages(ctx context.Context, itemID uint64, urls []string) error
+	// ReplaceItemImages atomically swaps an item's photo rows for images, in the order given.
+	ReplaceItemImages(ctx context.Context, itemID uint64, images []model.ItemImage) error
 
 	// DeleteItem removes an item row (its photo rows cascade). found is false if no row with this id
 	// existed.
@@ -105,7 +105,7 @@ func (r *Repository) GetByID(
 		return entity.Item{}, err
 	}
 
-	images, err := r.storage.ItemImageURLs(ctx, id)
+	images, err := r.storage.ItemImages(ctx, id)
 	if err != nil {
 		return entity.Item{}, err
 	}
@@ -125,35 +125,34 @@ func (r *Repository) Update(ctx context.Context, req port.ItemUpdateRequest) (bo
 }
 
 // ReplaceImages overwrites an item's photo set with images (in the given order) and returns
-// whichever previously-stored URLs are no longer referenced, so the caller can remove their files
+// whichever previously-stored images are no longer referenced, so the caller can remove their files
 // from disk.
 func (r *Repository) ReplaceImages(
 	ctx context.Context,
 	itemID uint64,
-	images []string,
-) ([]string, error) {
-	oldURLs, err := r.storage.ItemImageURLs(ctx, itemID)
+	images []entity.ItemImage,
+) ([]entity.ItemImage, error) {
+	old, err := r.storage.ItemImages(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := r.storage.ReplaceItemImages(ctx, itemID, images); err != nil {
+	if err := r.storage.ReplaceItemImages(ctx, itemID, toModelImages(images)); err != nil {
 		return nil, err
 	}
 
-	return removed(oldURLs, images), nil
+	return removed(toEntityImages(old), images), nil
 }
 
-// Delete removes an item, reporting whether it was found and returning the photo URLs it owned (for
-// the caller to remove from disk).
+// Delete removes an item, reporting whether it was found and returning the photos it owned (for the
+// caller to remove from disk).
 func (r *Repository) Delete(
 	ctx context.Context,
 	id uint64,
-) ([]string, bool, error) {
-	// Best-effort: read the photo URLs before deleting (item_images rows cascade-delete with the item)
-	// so the caller can also remove their files on disk. A lookup failure here shouldn't block the
-	// delete.
-	urls, _ := r.storage.ItemImageURLs(ctx, id)
+) ([]entity.ItemImage, bool, error) {
+	// Best-effort: read the photos before deleting (item_images rows cascade-delete with the item) so
+	// the caller can also remove their files on disk. A lookup failure here shouldn't block the delete.
+	images, _ := r.storage.ItemImages(ctx, id)
 
 	found, err := r.storage.DeleteItem(ctx, id)
 	if err != nil {
@@ -164,7 +163,7 @@ func (r *Repository) Delete(
 		return nil, false, nil
 	}
 
-	return urls, true, nil
+	return toEntityImages(images), true, nil
 }
 
 // CountByLocation counts the items currently stored in a location — used to refuse deleting a
@@ -178,26 +177,27 @@ func (r *Repository) CountByLocation(
 
 // imagesFor loads the photos of a batch of items in one round-trip, skipping the query entirely when
 // there are no items to ask about.
-func (r *Repository) imagesFor(ctx context.Context, itemIDs []uint64) (map[uint64][]string, error) {
+func (r *Repository) imagesFor(ctx context.Context, itemIDs []uint64) (map[uint64][]model.ItemImage, error) {
 	if len(itemIDs) == 0 {
-		return map[uint64][]string{}, nil
+		return map[uint64][]model.ItemImage{}, nil
 	}
 
 	return r.storage.ListItemImages(ctx, itemIDs)
 }
 
-// removed lists the URLs that were stored before but aren't part of the new photo set.
-func removed(oldURLs, newURLs []string) []string {
-	kept := make(map[string]bool, len(newURLs))
-	for _, url := range newURLs {
-		kept[url] = true
+// removed lists the photos that were stored before but aren't part of the new photo set, identified
+// by URL.
+func removed(old, newImages []entity.ItemImage) []entity.ItemImage {
+	kept := make(map[string]bool, len(newImages))
+	for _, img := range newImages {
+		kept[img.URL] = true
 	}
 
-	var gone []string
+	var gone []entity.ItemImage
 
-	for _, url := range oldURLs {
-		if !kept[url] {
-			gone = append(gone, url)
+	for _, img := range old {
+		if !kept[img.URL] {
+			gone = append(gone, img)
 		}
 	}
 
@@ -206,10 +206,32 @@ func removed(oldURLs, newURLs []string) []string {
 
 // orEmpty normalizes a nil photo list into an empty one, so an item without photos serializes as []
 // rather than null.
-func orEmpty(images []string) []string {
+func orEmpty(images []model.ItemImage) []model.ItemImage {
 	if images == nil {
-		return []string{}
+		return []model.ItemImage{}
 	}
 
 	return images
+}
+
+// toEntityImages converts row-shaped photos into the domain transport shape.
+func toEntityImages(images []model.ItemImage) []entity.ItemImage {
+	out := make([]entity.ItemImage, len(images))
+
+	for i, img := range images {
+		out[i] = entity.ItemImage{URL: img.URL, ThumbnailURL: img.ThumbnailURL}
+	}
+
+	return out
+}
+
+// toModelImages converts domain-shaped photos into the row shape ready to be persisted.
+func toModelImages(images []entity.ItemImage) []model.ItemImage {
+	out := make([]model.ItemImage, len(images))
+
+	for i, img := range images {
+		out[i] = model.ItemImage{URL: img.URL, ThumbnailURL: img.ThumbnailURL}
+	}
+
+	return out
 }
