@@ -130,17 +130,24 @@ func CheckCurrentPassword(ctx context.Context, req CheckCurrentPasswordRequest) 
 }
 
 // ProcessImages runs each photo through compression + storage, unless it's already a URL to a
-// previously-stored file (unchanged since the item was last saved).
+// previously-stored file (unchanged since the item was last saved) — in which case it's passed
+// through as-is, with no thumbnail: ProcessImages only has the URL for an unchanged photo, not its
+// bytes, so it has nothing to generate a thumbnail from. Callers that need to carry over an
+// unchanged photo's existing thumbnail (see the update use case) do so themselves afterwards.
+//
+// Thumbnail generation for a freshly-uploaded photo is best-effort: a photo whose source format the
+// thumbnailer can't decode is still saved and returned with an empty ThumbnailURL, rather than
+// failing the whole request.
 func ProcessImages(
 	store port.ImageStorage,
 	proc port.ImageProcessor,
 	images []string,
-) ([]string, error) {
-	processed := make([]string, len(images))
+) ([]entity.ItemImage, error) {
+	processed := make([]entity.ItemImage, len(images))
 
 	for i, img := range images {
 		if store.IsStoredURL(img) {
-			processed[i] = img
+			processed[i] = entity.ItemImage{URL: img}
 			continue
 		}
 
@@ -159,10 +166,32 @@ func ProcessImages(
 			return nil, fmt.Errorf("photo #%d: failed to save (%w)", i+1, err)
 		}
 
-		processed[i] = savedURL
+		processed[i] = entity.ItemImage{
+			URL:          savedURL,
+			ThumbnailURL: saveThumbnail(store, proc, raw, mimeType),
+		}
 	}
 
 	return processed, nil
+}
+
+// saveThumbnail generates and stores a small preview of raw, returning its URL — or "" if the
+// source format can't be decoded for a thumbnail. That's not treated as fatal: the caller still has
+// the full-size photo, and the frontend falls back to it when no thumbnail is present.
+func saveThumbnail(
+	store port.ImageStorage, proc port.ImageProcessor, raw []byte, mimeType string,
+) string {
+	data, ext, err := proc.CompressThumbnail(raw, mimeType)
+	if err != nil {
+		return ""
+	}
+
+	savedURL, err := store.Save(data, ext)
+	if err != nil {
+		return ""
+	}
+
+	return savedURL
 }
 
 // parseDataURL splits "data:<mime>;base64,<data>" — the format a freshly uploaded photo arrives in

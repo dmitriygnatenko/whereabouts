@@ -41,6 +41,14 @@ func fakeURL() string       { return gofakeit.URL() }
 func fakeNow() time.Time    { return gofakeit.Date().UTC() }
 func fakeTimestamp() string { return fakeNow().Format(time.RFC3339Nano) }
 
+func fakeModelImage() model.ItemImage {
+	return model.ItemImage{URL: fakeURL(), ThumbnailURL: fakeURL()}
+}
+
+func fakeEntityImage() entity.ItemImage {
+	return entity.ItemImage{URL: fakeURL(), ThumbnailURL: fakeURL()}
+}
+
 func fakeItemModel() model.Item {
 	return model.Item{
 		ID:         fakeID(),
@@ -92,9 +100,9 @@ func TestRepository_List(t *testing.T) {
 			args: args{ctx: context.Background()},
 			mock: func(m *mocks.MockStorage) []entity.Item {
 				withPhotos, withoutPhotos := fakeItemModel(), fakeItemModel()
-				photos := []string{
-					fakeURL(),
-					fakeURL(),
+				photos := []model.ItemImage{
+					fakeModelImage(),
+					fakeModelImage(),
 				}
 
 				m.EXPECT().ListItems(context.Background()).Return([]model.Item{
@@ -106,11 +114,11 @@ func TestRepository_List(t *testing.T) {
 						withPhotos.ID,
 						withoutPhotos.ID,
 					}).
-					Return(map[uint64][]string{withPhotos.ID: photos}, nil)
+					Return(map[uint64][]model.ItemImage{withPhotos.ID: photos}, nil)
 
 				return []entity.Item{
 					withPhotos.ToEntity(photos),
-					withoutPhotos.ToEntity([]string{}),
+					withoutPhotos.ToEntity([]model.ItemImage{}),
 				}
 			},
 			assertResult: func(
@@ -188,10 +196,10 @@ func TestRepository_GetByID(t *testing.T) {
 			mock: func(m *mocks.MockStorage) entity.Item {
 				it := fakeItemModel()
 				it.ID = id
-				photos := []string{fakeURL()}
+				photos := []model.ItemImage{fakeModelImage()}
 
 				m.EXPECT().FindItemByID(context.Background(), id).Return(it, nil)
-				m.EXPECT().ItemImageURLs(context.Background(), id).Return(photos, nil)
+				m.EXPECT().ItemImages(context.Background(), id).Return(photos, nil)
 
 				return it.ToEntity(photos)
 			},
@@ -206,7 +214,7 @@ func TestRepository_GetByID(t *testing.T) {
 			},
 			mock: func(m *mocks.MockStorage) entity.Item {
 				m.EXPECT().FindItemByID(context.Background(), id).Return(model.Item{}, sql.ErrNoRows)
-				// ItemImageURLs deliberately left unstubbed.
+				// ItemImages deliberately left unstubbed.
 
 				return entity.Item{}
 			},
@@ -231,7 +239,7 @@ func TestRepository_GetByID(t *testing.T) {
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 		{
-			name: "an ItemImageURLs error is propagated",
+			name: "an ItemImages error is propagated",
 			args: args{
 				ctx: context.Background(),
 				id:  id,
@@ -240,7 +248,7 @@ func TestRepository_GetByID(t *testing.T) {
 				it := fakeItemModel()
 				it.ID = id
 				m.EXPECT().FindItemByID(context.Background(), id).Return(it, nil)
-				m.EXPECT().ItemImageURLs(context.Background(), id).Return(nil, errStub)
+				m.EXPECT().ItemImages(context.Background(), id).Return(nil, errStub)
 
 				return entity.Item{}
 			},
@@ -436,22 +444,24 @@ func TestRepository_ReplaceImages(t *testing.T) {
 	type args struct {
 		ctx    context.Context
 		itemID uint64
-		images []string
+		images []entity.ItemImage
 	}
 
 	type testCase struct {
 		name         string
 		args         args
 		mock         func(m *mocks.MockStorage)
-		assertResult func(t *testing.T, got []string)
+		assertResult func(t *testing.T, got []entity.ItemImage)
 		assertErr    func(t *testing.T, err error)
 	}
 
 	var tests []testCase
 
 	{ // a photo dropped from the new set is reported as removed, kept ones are not
-		kept, gone := fakeURL(), fakeURL()
-		images := []string{kept}
+		kept := fakeEntityImage()
+		gone := fakeModelImage()
+		images := []entity.ItemImage{kept}
+		modelImages := []model.ItemImage{{URL: kept.URL, ThumbnailURL: kept.ThumbnailURL}}
 
 		tests = append(tests, testCase{
 			name: "a photo dropped from the new set is reported as removed, kept ones are not",
@@ -461,25 +471,27 @@ func TestRepository_ReplaceImages(t *testing.T) {
 				images: images,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), itemID).Return([]string{
-					kept,
+				m.EXPECT().ItemImages(context.Background(), itemID).Return([]model.ItemImage{
+					{URL: kept.URL, ThumbnailURL: kept.ThumbnailURL},
 					gone,
 				}, nil)
-				m.EXPECT().ReplaceItemImages(context.Background(), itemID, images).Return(nil)
+				m.EXPECT().ReplaceItemImages(context.Background(), itemID, modelImages).Return(nil)
 			},
 			assertResult: func(
-				t *testing.T, got []string,
+				t *testing.T, got []entity.ItemImage,
 			) {
-				require.Equal(t, []string{gone}, got)
+				require.Equal(t, []entity.ItemImage{{URL: gone.URL, ThumbnailURL: gone.ThumbnailURL}}, got)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		})
 	}
 
 	{ // nothing is reported removed when the new set matches the old one exactly
-		urls := []string{
-			fakeURL(),
-			fakeURL(),
+		img1, img2 := fakeEntityImage(), fakeEntityImage()
+		images := []entity.ItemImage{img1, img2}
+		old := []model.ItemImage{
+			{URL: img1.URL, ThumbnailURL: img1.ThumbnailURL},
+			{URL: img2.URL, ThumbnailURL: img2.ThumbnailURL},
 		}
 
 		tests = append(tests, testCase{
@@ -487,13 +499,13 @@ func TestRepository_ReplaceImages(t *testing.T) {
 			args: args{
 				ctx:    context.Background(),
 				itemID: itemID,
-				images: urls,
+				images: images,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), itemID).Return(urls, nil)
-				m.EXPECT().ReplaceItemImages(context.Background(), itemID, urls).Return(nil)
+				m.EXPECT().ItemImages(context.Background(), itemID).Return(old, nil)
+				m.EXPECT().ReplaceItemImages(context.Background(), itemID, old).Return(nil)
 			},
-			assertResult: func(t *testing.T, got []string) { require.Empty(t, got) },
+			assertResult: func(t *testing.T, got []entity.ItemImage) { require.Empty(t, got) },
 			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		})
 	}
@@ -504,20 +516,22 @@ func TestRepository_ReplaceImages(t *testing.T) {
 			args: args{
 				ctx:    context.Background(),
 				itemID: itemID,
-				images: []string{fakeURL()},
+				images: []entity.ItemImage{fakeEntityImage()},
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), itemID).Return(nil, errStub)
+				m.EXPECT().ItemImages(context.Background(), itemID).Return(nil, errStub)
 				// ReplaceItemImages deliberately left unstubbed.
 			},
-			assertResult: func(t *testing.T, got []string) {},
+			assertResult: func(t *testing.T, got []entity.ItemImage) {},
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		})
 	}
 
 	{ // a swap failure is propagated
-		old := []string{fakeURL()}
-		images := []string{fakeURL()}
+		old := []model.ItemImage{fakeModelImage()}
+		img := fakeEntityImage()
+		images := []entity.ItemImage{img}
+		modelImages := []model.ItemImage{{URL: img.URL, ThumbnailURL: img.ThumbnailURL}}
 
 		tests = append(tests, testCase{
 			name: "a swap failure is propagated",
@@ -527,10 +541,10 @@ func TestRepository_ReplaceImages(t *testing.T) {
 				images: images,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), itemID).Return(old, nil)
-				m.EXPECT().ReplaceItemImages(context.Background(), itemID, images).Return(errStub)
+				m.EXPECT().ItemImages(context.Background(), itemID).Return(old, nil)
+				m.EXPECT().ReplaceItemImages(context.Background(), itemID, modelImages).Return(errStub)
 			},
-			assertResult: func(t *testing.T, got []string) {},
+			assertResult: func(t *testing.T, got []entity.ItemImage) {},
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		})
 	}
@@ -565,30 +579,30 @@ func TestRepository_Delete(t *testing.T) {
 		name         string
 		args         args
 		mock         func(m *mocks.MockStorage)
-		assertResult func(t *testing.T, urls []string, found bool)
+		assertResult func(t *testing.T, images []entity.ItemImage, found bool)
 		assertErr    func(t *testing.T, err error)
 	}
 
 	var tests []testCase
 
 	{
-		urls := []string{
-			fakeURL(),
-			fakeURL(),
+		images := []model.ItemImage{
+			fakeModelImage(),
+			fakeModelImage(),
 		}
 
 		tests = append(tests, testCase{
-			name: "deletes the item and returns the photo urls it owned",
+			name: "deletes the item and returns the photos it owned",
 			args: args{
 				ctx: context.Background(),
 				id:  id,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), id).Return(urls, nil)
+				m.EXPECT().ItemImages(context.Background(), id).Return(images, nil)
 				m.EXPECT().DeleteItem(context.Background(), id).Return(true, nil)
 			},
-			assertResult: func(t *testing.T, gotURLs []string, found bool) {
-				require.Equal(t, urls, gotURLs)
+			assertResult: func(t *testing.T, got []entity.ItemImage, found bool) {
+				require.Equal(t, toEntityImages(images), got)
 				require.True(t, found)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
@@ -603,11 +617,11 @@ func TestRepository_Delete(t *testing.T) {
 				id:  id,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), id).Return(nil, errStub)
+				m.EXPECT().ItemImages(context.Background(), id).Return(nil, errStub)
 				m.EXPECT().DeleteItem(context.Background(), id).Return(true, nil)
 			},
-			assertResult: func(t *testing.T, gotURLs []string, found bool) {
-				require.Nil(t, gotURLs)
+			assertResult: func(t *testing.T, got []entity.ItemImage, found bool) {
+				require.Empty(t, got)
 				require.True(t, found)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
@@ -615,20 +629,20 @@ func TestRepository_Delete(t *testing.T) {
 	}
 
 	{
-		urls := []string{fakeURL()}
+		images := []model.ItemImage{fakeModelImage()}
 
 		tests = append(tests, testCase{
-			name: "an unknown id reports not found, with no urls",
+			name: "an unknown id reports not found, with no photos",
 			args: args{
 				ctx: context.Background(),
 				id:  id,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), id).Return(urls, nil)
+				m.EXPECT().ItemImages(context.Background(), id).Return(images, nil)
 				m.EXPECT().DeleteItem(context.Background(), id).Return(false, nil)
 			},
-			assertResult: func(t *testing.T, gotURLs []string, found bool) {
-				require.Nil(t, gotURLs)
+			assertResult: func(t *testing.T, got []entity.ItemImage, found bool) {
+				require.Nil(t, got)
 				require.False(t, found)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
@@ -643,10 +657,10 @@ func TestRepository_Delete(t *testing.T) {
 				id:  id,
 			},
 			mock: func(m *mocks.MockStorage) {
-				m.EXPECT().ItemImageURLs(context.Background(), id).Return(nil, nil)
+				m.EXPECT().ItemImages(context.Background(), id).Return(nil, nil)
 				m.EXPECT().DeleteItem(context.Background(), id).Return(false, errStub)
 			},
-			assertResult: func(t *testing.T, gotURLs []string, found bool) {},
+			assertResult: func(t *testing.T, got []entity.ItemImage, found bool) {},
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		})
 	}
@@ -658,9 +672,9 @@ func TestRepository_Delete(t *testing.T) {
 			r, m := newRepo(t)
 			tt.mock(m)
 
-			urls, found, err := r.Delete(tt.args.ctx, tt.args.id)
+			images, found, err := r.Delete(tt.args.ctx, tt.args.id)
 			tt.assertErr(t, err)
-			tt.assertResult(t, urls, found)
+			tt.assertResult(t, images, found)
 		})
 	}
 }

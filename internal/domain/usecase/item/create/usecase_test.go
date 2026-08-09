@@ -251,7 +251,9 @@ func TestUseCase_Execute(t *testing.T) {
 
 						return id, nil
 					})
-				d.items.EXPECT().ReplaceImages(gomock.Any(), id, []string{storedURL}).Return(nil, nil)
+				d.items.EXPECT().
+					ReplaceImages(gomock.Any(), id, []entity.ItemImage{{URL: storedURL}}).
+					Return(nil, nil)
 				d.items.EXPECT().GetByID(gomock.Any(), id).Return(createdItem, nil)
 
 				return Input{

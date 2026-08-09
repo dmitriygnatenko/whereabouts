@@ -66,10 +66,11 @@ func Migrate(ctx context.Context, db *Storage) error {
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
 		`CREATE TABLE IF NOT EXISTS item_images (
-			id          INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			item_id  INTEGER UNSIGNED NOT NULL,
-			url      VARCHAR(255) NOT NULL,
-			position INTEGER NOT NULL DEFAULT 0,
+			id            INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			item_id       INTEGER UNSIGNED NOT NULL,
+			url           VARCHAR(255) NOT NULL,
+			thumbnail_url VARCHAR(255) NOT NULL DEFAULT '',
+			position      INTEGER NOT NULL DEFAULT 0,
 			KEY idx_item_images_item (item_id),
 			CONSTRAINT fk_item_images_item FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,

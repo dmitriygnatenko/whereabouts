@@ -54,3 +54,19 @@ func (mr *MockImageProcessorMockRecorder) Compress(data, mimeType any) *gomock.C
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Compress", reflect.TypeOf((*MockImageProcessor)(nil).Compress), data, mimeType)
 }
+
+// CompressThumbnail mocks base method.
+func (m *MockImageProcessor) CompressThumbnail(data []byte, mimeType string) ([]byte, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompressThumbnail", data, mimeType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// CompressThumbnail indicates an expected call of CompressThumbnail.
+func (mr *MockImageProcessorMockRecorder) CompressThumbnail(data, mimeType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompressThumbnail", reflect.TypeOf((*MockImageProcessor)(nil).CompressThumbnail), data, mimeType)
+}

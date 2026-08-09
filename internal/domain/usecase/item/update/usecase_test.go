@@ -155,12 +155,13 @@ func TestUseCase_Execute(t *testing.T) {
 		{
 			name: "malformed photo is rejected",
 			mock: func(d *deps) Input {
-				locationID := fakeID()
+				id, locationID := fakeID(), fakeID()
 				d.locations.EXPECT().Exists(gomock.Any(), locationID).Return(true, nil)
+				// GetByID deliberately left unstubbed: ProcessImages fails before restoreThumbnails runs.
 				d.storage.EXPECT().IsStoredURL("not-a-data-url").Return(false)
 
 				return Input{
-					ID:         fakeID(),
+					ID:         id,
 					Name:       fakeName(),
 					LocationID: locationID,
 					Images:     []string{"not-a-data-url"},
@@ -255,11 +256,11 @@ func TestUseCase_Execute(t *testing.T) {
 			},
 		},
 		{
-			name: "trims fields, deletes images no longer referenced, and updates the item",
+			name: "trims fields, deletes images (and thumbnails) no longer referenced, and updates the item",
 			mock: func(d *deps) Input {
 				id, locationID := fakeID(), fakeID()
 				name, notes := fakeName(), fakeNotes()
-				removedURL := gofakeit.URL()
+				removed := entity.ItemImage{URL: gofakeit.URL(), ThumbnailURL: gofakeit.URL()}
 
 				d.locations.EXPECT().Exists(gomock.Any(), locationID).Return(true, nil)
 				d.items.EXPECT().Update(gomock.Any(), gomock.Cond(func(r port.ItemUpdateRequest) bool {
@@ -270,8 +271,11 @@ func TestUseCase_Execute(t *testing.T) {
 
 						return true, nil
 					})
-				d.items.EXPECT().ReplaceImages(gomock.Any(), id, gomock.Any()).Return([]string{removedURL}, nil)
-				d.storage.EXPECT().Delete(removedURL)
+				d.items.EXPECT().
+					ReplaceImages(gomock.Any(), id, gomock.Any()).
+					Return([]entity.ItemImage{removed}, nil)
+				d.storage.EXPECT().Delete(removed.URL)
+				d.storage.EXPECT().Delete(removed.ThumbnailURL)
 				d.items.EXPECT().GetByID(gomock.Any(), id).Return(updatedItem, nil)
 
 				return Input{

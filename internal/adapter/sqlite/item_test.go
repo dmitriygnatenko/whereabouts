@@ -20,7 +20,8 @@ import (
 func placeholdersQuery(n int) string {
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", n), ",")
 
-	return `SELECT item_id, url FROM item_images WHERE item_id IN (` + placeholders + `) ORDER BY item_id, position`
+	return `SELECT item_id, url, thumbnail_url FROM item_images ` +
+		`WHERE item_id IN (` + placeholders + `) ORDER BY item_id, position`
 }
 
 // TestListItems covers the listing behind the main screen: rows come back scanned into model.Item
@@ -210,6 +211,7 @@ func TestListItemImages(t *testing.T) {
 
 	kettle, drill := fakeID(), fakeID()
 	kettlePhoto1, kettlePhoto2, drillPhoto := fakeURL(), fakeURL(), fakeURL()
+	kettleThumb1, kettleThumb2, drillThumb := fakeURL(), fakeURL(), fakeURL()
 
 	type args struct {
 		ctx context.Context
@@ -220,7 +222,7 @@ func TestListItemImages(t *testing.T) {
 		name         string
 		args         args
 		mock         func(mock sqlmock.Sqlmock)
-		assertResult func(t *testing.T, got map[uint64][]string)
+		assertResult func(t *testing.T, got map[uint64][]model.ItemImage)
 		assertErr    func(t *testing.T, err error)
 	}{
 		{
@@ -237,19 +239,20 @@ func TestListItemImages(t *testing.T) {
 					sqlmock.NewRows([]string{
 						"item_id",
 						"url",
+						"thumbnail_url",
 					}).
-						AddRow(kettle, kettlePhoto1).
-						AddRow(kettle, kettlePhoto2).
-						AddRow(drill, drillPhoto),
+						AddRow(kettle, kettlePhoto1, kettleThumb1).
+						AddRow(kettle, kettlePhoto2, kettleThumb2).
+						AddRow(drill, drillPhoto, drillThumb),
 				)
 			},
-			assertResult: func(t *testing.T, got map[uint64][]string) {
-				require.Equal(t, map[uint64][]string{
+			assertResult: func(t *testing.T, got map[uint64][]model.ItemImage) {
+				require.Equal(t, map[uint64][]model.ItemImage{
 					kettle: {
-						kettlePhoto1,
-						kettlePhoto2,
+						{URL: kettlePhoto1, ThumbnailURL: kettleThumb1},
+						{URL: kettlePhoto2, ThumbnailURL: kettleThumb2},
 					},
-					drill: {drillPhoto},
+					drill: {{URL: drillPhoto, ThumbnailURL: drillThumb}},
 				}, got)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
@@ -265,11 +268,12 @@ func TestListItemImages(t *testing.T) {
 					sqlmock.NewRows([]string{
 						"item_id",
 						"url",
+						"thumbnail_url",
 					}),
 				)
 			},
-			assertResult: func(t *testing.T, got map[uint64][]string) {
-				require.Equal(t, map[uint64][]string{}, got)
+			assertResult: func(t *testing.T, got map[uint64][]model.ItemImage) {
+				require.Equal(t, map[uint64][]model.ItemImage{}, got)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
@@ -283,10 +287,11 @@ func TestListItemImages(t *testing.T) {
 				mock.ExpectQuery(placeholdersQuery(0)).WillReturnRows(sqlmock.NewRows([]string{
 					"item_id",
 					"url",
+					"thumbnail_url",
 				}))
 			},
-			assertResult: func(t *testing.T, got map[uint64][]string) {
-				require.Equal(t, map[uint64][]string{}, got)
+			assertResult: func(t *testing.T, got map[uint64][]model.ItemImage) {
+				require.Equal(t, map[uint64][]model.ItemImage{}, got)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
 		},
@@ -299,7 +304,7 @@ func TestListItemImages(t *testing.T) {
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(placeholdersQuery(1)).WithArgs(drill).WillReturnError(errStub)
 			},
-			assertResult: func(t *testing.T, got map[uint64][]string) {},
+			assertResult: func(t *testing.T, got map[uint64][]model.ItemImage) {},
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
@@ -318,39 +323,43 @@ func TestListItemImages(t *testing.T) {
 	}
 }
 
-// TestItemImageURLs covers the single-item fetch, whose whole job is the position order.
-func TestItemImageURLs(t *testing.T) {
+// TestItemImages covers the single-item fetch, whose whole job is the position order.
+func TestItemImages(t *testing.T) {
 	t.Parallel()
 
-	query := `SELECT url FROM item_images WHERE item_id = ? ORDER BY position`
+	query := `SELECT url, thumbnail_url FROM item_images WHERE item_id = ? ORDER BY position`
 	itemID := fakeID()
 	url1, url2 := fakeURL(), fakeURL()
+	thumb1, thumb2 := fakeURL(), fakeURL()
 
 	tests := []struct {
 		name         string
 		mock         func(mock sqlmock.Sqlmock)
-		assertResult func(t *testing.T, got []string)
+		assertResult func(t *testing.T, got []model.ItemImage)
 		assertErr    func(t *testing.T, err error)
 	}{
 		{
 			name: "an item without photos",
 			mock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(query).WithArgs(itemID).WillReturnRows(sqlmock.NewRows([]string{"url"}))
+				mock.ExpectQuery(query).WithArgs(itemID).
+					WillReturnRows(sqlmock.NewRows([]string{"url", "thumbnail_url"}))
 			},
-			assertResult: func(t *testing.T, got []string) { require.Empty(t, got) },
+			assertResult: func(t *testing.T, got []model.ItemImage) { require.Empty(t, got) },
 			assertErr:    func(t *testing.T, err error) { require.NoError(t, err) },
 		},
 		{
 			name: "photos come back in the order the query returns them",
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(query).WithArgs(itemID).WillReturnRows(
-					sqlmock.NewRows([]string{"url"}).AddRow(url1).AddRow(url2),
+					sqlmock.NewRows([]string{"url", "thumbnail_url"}).
+						AddRow(url1, thumb1).
+						AddRow(url2, thumb2),
 				)
 			},
-			assertResult: func(t *testing.T, got []string) {
-				require.Equal(t, []string{
-					url1,
-					url2,
+			assertResult: func(t *testing.T, got []model.ItemImage) {
+				require.Equal(t, []model.ItemImage{
+					{URL: url1, ThumbnailURL: thumb1},
+					{URL: url2, ThumbnailURL: thumb2},
 				}, got)
 			},
 			assertErr: func(t *testing.T, err error) { require.NoError(t, err) },
@@ -360,7 +369,7 @@ func TestItemImageURLs(t *testing.T) {
 			mock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(query).WithArgs(itemID).WillReturnError(errStub)
 			},
-			assertResult: func(t *testing.T, got []string) {},
+			assertResult: func(t *testing.T, got []model.ItemImage) {},
 			assertErr:    func(t *testing.T, err error) { require.ErrorIs(t, err, errStub) },
 		},
 	}
@@ -372,7 +381,7 @@ func TestItemImageURLs(t *testing.T) {
 			s, mock := newMock(t)
 			tt.mock(mock)
 
-			got, err := s.ItemImageURLs(context.Background(), itemID)
+			got, err := s.ItemImages(context.Background(), itemID)
 			tt.assertErr(t, err)
 			tt.assertResult(t, got)
 		})
@@ -502,24 +511,24 @@ func TestReplaceItemImages(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		urls      []string
-		mock      func(mock sqlmock.Sqlmock, urls []string)
+		images    []model.ItemImage
+		mock      func(mock sqlmock.Sqlmock, images []model.ItemImage)
 		assertErr func(t *testing.T, err error)
 	}{
 		{
 			name: "sets the photos and commits",
-			urls: []string{
-				fakeURL(),
-				fakeURL(),
+			images: []model.ItemImage{
+				{URL: fakeURL(), ThumbnailURL: fakeURL()},
+				{URL: fakeURL(), ThumbnailURL: fakeURL()},
 			},
-			mock: func(mock sqlmock.Sqlmock, urls []string) {
+			mock: func(mock sqlmock.Sqlmock, images []model.ItemImage) {
 				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM item_images WHERE item_id = ?`).
 					WithArgs(itemID).WillReturnResult(sqlmock.NewResult(0, 0))
 
-				for i, url := range urls {
-					mock.ExpectExec(`INSERT INTO item_images (item_id, url, position) VALUES (?, ?, ?)`).
-						WithArgs(itemID, url, i).WillReturnResult(sqlmock.NewResult(int64(fakeID()), 1))
+				for i, img := range images {
+					mock.ExpectExec(`INSERT INTO item_images (item_id, url, thumbnail_url, position) VALUES (?, ?, ?, ?)`).
+						WithArgs(itemID, img.URL, img.ThumbnailURL, i).WillReturnResult(sqlmock.NewResult(int64(fakeID()), 1))
 				}
 
 				mock.ExpectCommit()
@@ -528,7 +537,7 @@ func TestReplaceItemImages(t *testing.T) {
 		},
 		{
 			name: "an empty list still deletes the old photos and commits",
-			mock: func(mock sqlmock.Sqlmock, urls []string) {
+			mock: func(mock sqlmock.Sqlmock, images []model.ItemImage) {
 				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM item_images WHERE item_id = ?`).
 					WithArgs(itemID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -538,7 +547,7 @@ func TestReplaceItemImages(t *testing.T) {
 		},
 		{
 			name: "a failed delete rolls back instead of committing",
-			mock: func(mock sqlmock.Sqlmock, urls []string) {
+			mock: func(mock sqlmock.Sqlmock, images []model.ItemImage) {
 				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM item_images WHERE item_id = ?`).
 					WithArgs(itemID).WillReturnError(errStub)
@@ -548,16 +557,16 @@ func TestReplaceItemImages(t *testing.T) {
 		},
 		{
 			name: "a rejected insert rolls back the delete along with it",
-			urls: []string{
-				fakeURL(),
-				fakeURL(),
+			images: []model.ItemImage{
+				{URL: fakeURL(), ThumbnailURL: fakeURL()},
+				{URL: fakeURL(), ThumbnailURL: fakeURL()},
 			},
-			mock: func(mock sqlmock.Sqlmock, urls []string) {
+			mock: func(mock sqlmock.Sqlmock, images []model.ItemImage) {
 				mock.ExpectBegin()
 				mock.ExpectExec(`DELETE FROM item_images WHERE item_id = ?`).
 					WithArgs(itemID).WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec(`INSERT INTO item_images (item_id, url, position) VALUES (?, ?, ?)`).
-					WithArgs(itemID, urls[0], 0).WillReturnError(sqliteForeignKeyErr())
+				mock.ExpectExec(`INSERT INTO item_images (item_id, url, thumbnail_url, position) VALUES (?, ?, ?, ?)`).
+					WithArgs(itemID, images[0].URL, images[0].ThumbnailURL, 0).WillReturnError(sqliteForeignKeyErr())
 				mock.ExpectRollback()
 			},
 			assertErr: func(t *testing.T, err error) { require.Error(t, err) },
@@ -569,9 +578,9 @@ func TestReplaceItemImages(t *testing.T) {
 			t.Parallel()
 
 			s, mock := newMock(t)
-			tt.mock(mock, tt.urls)
+			tt.mock(mock, tt.images)
 
-			err := s.ReplaceItemImages(context.Background(), itemID, tt.urls)
+			err := s.ReplaceItemImages(context.Background(), itemID, tt.images)
 			tt.assertErr(t, err)
 		})
 	}

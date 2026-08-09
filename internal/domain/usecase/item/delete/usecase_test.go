@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"wherewhat/internal/domain/entity"
 	domainerror "wherewhat/internal/domain/error"
 	"wherewhat/internal/port/mocks"
 )
@@ -78,13 +79,17 @@ func TestUseCase_Execute(t *testing.T) {
 			},
 		},
 		{
-			name: "deletes every photo the item owned",
+			name: "deletes every photo the item owned, including thumbnails when present",
 			mock: func(d *deps) Input {
 				id := fakeID()
-				urls := []string{gofakeit.URL(), gofakeit.URL()}
-				d.items.EXPECT().Delete(gomock.Any(), id).Return(urls, true, nil)
-				d.storage.EXPECT().Delete(urls[0])
-				d.storage.EXPECT().Delete(urls[1])
+				images := []entity.ItemImage{
+					{URL: gofakeit.URL(), ThumbnailURL: gofakeit.URL()},
+					{URL: gofakeit.URL()},
+				}
+				d.items.EXPECT().Delete(gomock.Any(), id).Return(images, true, nil)
+				d.storage.EXPECT().Delete(images[0].URL)
+				d.storage.EXPECT().Delete(images[0].ThumbnailURL)
+				d.storage.EXPECT().Delete(images[1].URL)
 
 				return Input{ID: id}
 			},

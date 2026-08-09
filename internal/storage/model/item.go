@@ -20,14 +20,31 @@ type Item struct {
 	UpdatedAt  string
 }
 
-// ToEntity attaches the given photo URLs, loaded separately, to produce the domain entity.
-func (i Item) ToEntity(images []string) entity.Item {
+// ItemImage is the shape of a row in the item_images table (minus item_id/position, which the
+// caller already knows/uses for ordering).
+type ItemImage struct {
+	URL          string
+	ThumbnailURL string
+}
+
+// ToEntity attaches the given photos, loaded separately, to produce the domain entity. Images and
+// Thumbnails come back as parallel slices — the API response shape entity.Item has always used.
+func (i Item) ToEntity(images []ItemImage) entity.Item {
+	urls := make([]string, len(images))
+	thumbnails := make([]string, len(images))
+
+	for idx, img := range images {
+		urls[idx] = img.URL
+		thumbnails[idx] = img.ThumbnailURL
+	}
+
 	return entity.Item{
 		ID:         i.ID,
 		Name:       i.Name,
 		LocationID: i.LocationID,
 		Notes:      i.Notes,
-		Images:     images,
+		Images:     urls,
+		Thumbnails: thumbnails,
 		UpdatedAt:  i.UpdatedAt,
 	}
 }

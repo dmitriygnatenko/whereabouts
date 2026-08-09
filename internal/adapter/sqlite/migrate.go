@@ -63,10 +63,11 @@ func Migrate(ctx context.Context, db *Storage) error {
 		`CREATE INDEX IF NOT EXISTS idx_items_updated ON items (updated_at);`,
 
 		`CREATE TABLE IF NOT EXISTS item_images (
-			id       INTEGER PRIMARY KEY AUTOINCREMENT,
-			item_id  INTEGER NOT NULL REFERENCES items (id) ON DELETE CASCADE,
-			url      VARCHAR(255) NOT NULL,
-			position INTEGER NOT NULL DEFAULT 0
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			item_id       INTEGER NOT NULL REFERENCES items (id) ON DELETE CASCADE,
+			url           VARCHAR(255) NOT NULL,
+			thumbnail_url VARCHAR(255) NOT NULL DEFAULT '',
+			position      INTEGER NOT NULL DEFAULT 0
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_item_images_item ON item_images (item_id);`,
 	})
