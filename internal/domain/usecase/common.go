@@ -40,10 +40,13 @@ func PasswordRules() []validation.Rule {
 	}
 }
 
-// ItemNameRules is the ozzo-validation rule set for an item name field: required.
+// ItemNameRules is the ozzo-validation rule set for an item name field: required, and no longer
+// than entity.MaxItemNameLength (the width of the items.title column).
 func ItemNameRules() []validation.Rule {
 	return []validation.Rule{
 		validation.Required.Error("Enter the item name"),
+		validation.Length(0, entity.MaxItemNameLength).
+			Error(fmt.Sprintf("Item name must be at most %d characters", entity.MaxItemNameLength)),
 	}
 }
 
@@ -55,10 +58,13 @@ func LocationIDRules() []validation.Rule {
 	}
 }
 
-// LocationNameRules is the ozzo-validation rule set for a location name field: required.
+// LocationNameRules is the ozzo-validation rule set for a location name field: required, and no
+// longer than entity.MaxLocationNameLength (the width of the locations.title column).
 func LocationNameRules() []validation.Rule {
 	return []validation.Rule{
 		validation.Required.Error("Please enter a location name"),
+		validation.Length(0, entity.MaxLocationNameLength).
+			Error(fmt.Sprintf("Location name must be at most %d characters", entity.MaxLocationNameLength)),
 	}
 }
 

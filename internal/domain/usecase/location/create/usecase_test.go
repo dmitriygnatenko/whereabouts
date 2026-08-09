@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,6 +96,16 @@ func TestUseCase_Execute(t *testing.T) {
 			assertResult: assertZeroOutput,
 			assertErr: func(t *testing.T, err error) {
 				require.EqualError(t, err, "Please enter a location name")
+			},
+		},
+		{
+			name: "overlong name fails validation",
+			mock: func(locations *mocks.MockLocationRepository) Input {
+				return Input{Name: strings.Repeat("a", entity.MaxLocationNameLength+1)}
+			},
+			assertResult: assertZeroOutput,
+			assertErr: func(t *testing.T, err error) {
+				require.EqualError(t, err, "Location name must be at most 255 characters")
 			},
 		},
 		{

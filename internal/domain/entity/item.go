@@ -1,5 +1,9 @@
 package entity
 
+// MaxItemNameLength is the maximum accepted length for an item name — matches the items.title
+// column width (see the adapter migrations).
+const MaxItemNameLength = 255
+
 // Item is a thing stored at a Location, with an optional set of photos. UpdatedAt is kept as the
 // driver-formatted string read back from storage (see port.ItemRepository) rather than time.Time,
 // to match exactly what has always been sent to API clients. json tags live here rather than on a

@@ -1,5 +1,9 @@
 package entity
 
+// MaxLocationNameLength is the maximum accepted length for a location name — matches the
+// locations.title column width (see the adapter migrations).
+const MaxLocationNameLength = 255
+
 // Location is a place things can be stored in. ParentID == nil means a top-level location. json
 // tags live here rather than on a separate response DTO: a Location is already exactly what the API
 // returns.

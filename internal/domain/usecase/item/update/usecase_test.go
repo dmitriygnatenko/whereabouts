@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,20 @@ func TestUseCase_Execute(t *testing.T) {
 			assertResult: assertZeroOutput,
 			assertErr: func(t *testing.T, err error) {
 				require.EqualError(t, err, "Enter the item name")
+			},
+		},
+		{
+			name: "overlong name fails validation",
+			mock: func(d *deps) Input {
+				return Input{
+					ID:         fakeID(),
+					Name:       strings.Repeat("a", entity.MaxItemNameLength+1),
+					LocationID: fakeID(),
+				}
+			},
+			assertResult: assertZeroOutput,
+			assertErr: func(t *testing.T, err error) {
+				require.EqualError(t, err, "Item name must be at most 255 characters")
 			},
 		},
 		{

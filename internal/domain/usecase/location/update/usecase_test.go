@@ -2,12 +2,14 @@ package update
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"wherewhat/internal/domain/entity"
 	"wherewhat/internal/domain/usecase"
 	"wherewhat/internal/port"
 	"wherewhat/internal/port/mocks"
@@ -70,6 +72,19 @@ func TestUseCase_Execute(t *testing.T) {
 			assertResult: assertZeroOutput,
 			assertErr: func(t *testing.T, err error) {
 				require.EqualError(t, err, "Please enter a location name")
+			},
+		},
+		{
+			name: "overlong name fails validation",
+			mock: func(locations *mocks.MockLocationRepository) Input {
+				return Input{
+					ID:   fakeID(),
+					Name: strings.Repeat("a", entity.MaxLocationNameLength+1),
+				}
+			},
+			assertResult: assertZeroOutput,
+			assertErr: func(t *testing.T, err error) {
+				require.EqualError(t, err, "Location name must be at most 255 characters")
 			},
 		},
 		{

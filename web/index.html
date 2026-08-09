@@ -229,7 +229,7 @@
       </div>
 
       <div class="add-loc-form">
-        <input type="text" v-model="newLocationName" :placeholder="t('e.g. Shelf 2')" ref="newLocationInput" @keyup.enter="createLocation">
+        <input type="text" v-model="newLocationName" :placeholder="t('e.g. Shelf 2')" ref="newLocationInput" maxlength="255" @keyup.enter="createLocation">
         <button @click="createLocation" :disabled="!newLocationName.trim()">{{ t('Add') }}</button>
       </div>
       <div class="swatches">
@@ -351,7 +351,7 @@
 
         <div class="field">
           <label>{{ t('Item name') }}</label>
-          <input type="text" v-model="form.name" :placeholder="t('e.g. Passport')" ref="nameInput">
+          <input type="text" v-model="form.name" :placeholder="t('e.g. Passport')" ref="nameInput" maxlength="255">
           <div class="field-error" v-if="formErrors.name">{{ formErrors.name }}</div>
         </div>
 
@@ -446,7 +446,7 @@
 
         <div class="field">
           <label>{{ t('Location name') }}</label>
-          <input type="text" v-model="editLocationForm.name" :placeholder="t('e.g. Shelf 2')" @keyup.enter="saveLocationEdit">
+          <input type="text" v-model="editLocationForm.name" :placeholder="t('e.g. Shelf 2')" maxlength="255" @keyup.enter="saveLocationEdit">
         </div>
 
         <div class="swatches">
