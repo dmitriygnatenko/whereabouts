@@ -14,5 +14,6 @@ func (e NotFoundError) Error() string {
 }
 
 func IsNotFoundError(err error) bool {
-	return errors.Is(err, NotFoundError{})
+	var target *NotFoundError
+	return errors.As(err, &target)
 }

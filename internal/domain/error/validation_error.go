@@ -84,5 +84,6 @@ func ToValidationError(err error) *ValidationError {
 }
 
 func IsValidationError(err error) bool {
-	return errors.Is(err, ValidationError{})
+	var target *ValidationError
+	return errors.As(err, &target)
 }

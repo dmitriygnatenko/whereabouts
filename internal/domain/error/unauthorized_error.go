@@ -13,5 +13,6 @@ func (e UnauthorizedError) Error() string {
 }
 
 func IsUnauthorizedError(err error) bool {
-	return errors.Is(err, UnauthorizedError{})
+	var target *UnauthorizedError
+	return errors.As(err, &target)
 }

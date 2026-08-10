@@ -14,5 +14,6 @@ func (e ForbiddenError) Error() string {
 }
 
 func IsForbiddenError(err error) bool {
-	return errors.Is(err, ForbiddenError{})
+	var target *ForbiddenError
+	return errors.As(err, &target)
 }

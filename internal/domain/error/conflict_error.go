@@ -14,5 +14,6 @@ func (e ConflictError) Error() string {
 }
 
 func IsConflictError(err error) bool {
-	return errors.Is(err, ConflictError{})
+	var target *ConflictError
+	return errors.As(err, &target)
 }
