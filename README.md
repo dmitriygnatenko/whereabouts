@@ -308,3 +308,7 @@ go test ./...
 # or
 make test
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
